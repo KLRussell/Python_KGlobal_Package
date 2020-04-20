@@ -29,3 +29,12 @@ KGlobal.sql
 	* SQLQueue - SQL Queue class that allows you to queue multiple SQLEngineClasses. Caching is involved with this class
 
 	* SQLEngineClass - SQL Engine class that is used to multi-thread multiple connections for a singular connection string. Results, Errors, and command /w params stored in a class
+
+To Install:
+
+1) Type 'pip install KGlobal' in powershell
+
+2) Type 'KGlobal -c' to install Master Salt Key
+
+3) Enjoy!
+
