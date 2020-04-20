@@ -28,12 +28,12 @@ class Toolbox(SQLQueue, LogHandle):
         """
 
         if logging_path and os.path.exists(logging_path) and os.path.isdir(logging_path):
-            file_dir = os.path.dirname(logging_path)
+            file_dir = logging_path
 
             if logging_base_name:
-                base_name = os.path.basename(logging_path)
+                base_name = os.path.basename(logging_base_name)
             else:
-                base_name = os.path.basename(logging_path)
+                base_name = os.path.basename(script_path)
         else:
             file_dir = None
             base_name = None
