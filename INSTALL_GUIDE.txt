@@ -1,0 +1,5 @@
+1) Type 'pip install KGlobal' in powershell
+
+2) Type 'KGlobal -c' to install Master Salt Key
+
+3) Enjoy!
