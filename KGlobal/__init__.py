@@ -11,7 +11,7 @@ import pkg_resources
 
 __package_name__ = 'KGlobal'
 __author__ = 'Kevin Russell'
-__version__ = "1.2.2"
+__version__ = "1.2.3"
 __description__ = '''File, encryption, SQL, XML, and etc...'''
 __url__ = 'https://github.com/KLRussell/Python_KGlobal_Package'
 
