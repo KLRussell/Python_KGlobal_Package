@@ -9,6 +9,7 @@ import errno
 import collections.abc
 import pickle
 import logging
+import importlib.util as lib_import
 
 log = logging.getLogger(__name__)
 
@@ -72,7 +73,8 @@ class BaseDataConfig(collections.abc.MutableMapping):
     __action_lock = None
     __marker = object()
 
-    def __init__(self, file_dir, file_name_prefix, file_ext='db', new_salt_key=False, salt_key_fp=None, encrypt=True):
+    def __init__(self, file_dir, file_name_prefix, file_ext='db', new_salt_key=False, pepper_key_fp=None,
+                 salt_key_fp=None, encrypt=True):
         """
         Show me the location and I will settle file writing there!
         Make sure to specify salt key filepath else class will assume a new salt key
@@ -92,30 +94,36 @@ class BaseDataConfig(collections.abc.MutableMapping):
             raise ValueError("'file_name' There cannot be an extension")
         if not os.path.exists(file_dir):
             raise ValueError("'file_dir' Filepath does not exist")
+        if pepper_key_fp and not os.path.exists(os.path.dirname(pepper_key_fp)):
+            raise ValueError("'pepper_key_fp' %r directory does not exist" % pepper_key_fp)
         if salt_key_fp and not os.path.exists(os.path.dirname(salt_key_fp)):
             raise ValueError("'salt_key_fp' %r directory does not exist" % salt_key_fp)
         if new_salt_key and not salt_key_fp:
             raise ValueError("'salt_key_fp' is not populated")
         if not new_salt_key and salt_key_fp and not os.path.exists(salt_key_fp):
             raise ValueError("'salt_key_fp' %r does not exist as a salt key file" % salt_key_fp)
+        if pepper_key_fp and not os.path.exists(pepper_key_fp):
+            raise ValueError("'salt_key_fp' %r does not exist as a salt key file" % pepper_key_fp)
         if file_ext.find('.') > -1:
             raise ValueError("'file_ext' %r has a . in it. Please remove" % file_ext)
 
         self.__config = dict()
         self.__buffer_write = None
         self.__config_fp = os.path.join(file_dir, '{0}.{1}'.format(file_name_prefix, file_ext))
-
-        if salt_key_fp:
-            self.__config_key_fp = salt_key_fp
-        else:
-            from .. import master_salt_filepath
-            self.__config_key_fp = master_salt_filepath()
-
         self.__config_tmp_fp = os.path.join(file_dir, '%s.tmp' % file_name_prefix)
         self.__encrypt = encrypt
         self.__change_list = dict()
         self.__action_lock = Lock()
-        self.__set_salt()
+
+        if new_salt_key or pepper_key_fp:
+            self.__config_key_fp = pepper_key_fp
+            self.__set_pepper()
+        elif salt_key_fp:
+            self.__config_key_fp = salt_key_fp
+            self.__set_salt()
+        else:
+            raise ValueError("salt_key_fp and pepper_key_fp is not specified. Please specify filepath")
+
         self.sync()
 
     @property
@@ -330,6 +338,12 @@ class BaseDataConfig(collections.abc.MutableMapping):
             self.__salt_key = SaltHandle()
             file_write_bytes(self.__config_key_fp, pickle.dumps(self.__salt_key))
 
+    def __set_pepper(self):
+        from .cryptography import SaltHandle
+
+        pepper_key = file_read_bytes(self.__config_key_fp)
+        self.__salt_key = pickle.loads(pepper_key)
+
     def __package_config(self):
         from .cryptography import CryptHandle
 
@@ -445,9 +459,11 @@ class BaseDataConfig(collections.abc.MutableMapping):
 
 
 class DataConfig(BaseDataConfig):
-    def __init__(self, file_dir, file_name_prefix, file_ext='db', new_salt_key=False, salt_key_fp=None, encrypt=True):
+    def __init__(self, file_dir, file_name_prefix, file_ext='db', new_salt_key=False, pepper_key_fp=None,
+                 salt_key_fp=None, encrypt=True):
         BaseDataConfig.__init__(self, file_dir=file_dir, file_name_prefix=file_name_prefix, file_ext=file_ext,
-                                new_salt_key=new_salt_key, salt_key_fp=salt_key_fp, encrypt=encrypt)
+                                new_salt_key=new_salt_key, pepper_key_fp=pepper_key_fp, salt_key_fp=salt_key_fp,
+                                encrypt=encrypt)
 
 
 def file_read_bytes(file_path):
@@ -475,7 +491,7 @@ def file_write_bytes(file_path, data):
 
        :param file_path: File path to write file
        :param data: Bytes data (Please use pickle)
-       """
+    """
 
     import portalocker
 
@@ -488,6 +504,28 @@ def file_write_bytes(file_path, data):
 
     with portalocker.Lock(file_path, 'wb') as f:
         f.write(data)
+
+
+def file_write_text(file_path, text):
+    """
+    To write file in text for a specific text file
+
+    :param file_path: File path to write file
+    :param text: Text data
+    :return:
+    """
+
+    import portalocker
+
+    if not file_path:
+        raise ValueError("'file_path' no value specified")
+    if not text:
+        raise ValueError("'text' no value specified")
+    if not os.path.exists(os.path.dirname(file_path)):
+        raise ValueError("'file_path' directory cannot be found in file system")
+
+    with portalocker.Lock(file_path, 'w') as f:
+        f.write(text)
 
 
 def file_delete(file_path):

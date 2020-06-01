@@ -11,7 +11,7 @@ import pkg_resources
 
 __package_name__ = 'KGlobal'
 __author__ = 'Kevin Russell'
-__version__ = "1.2.3"
+__version__ = "1.3.0"
 __description__ = '''File, encryption, SQL, XML, and etc...'''
 __url__ = 'https://github.com/KLRussell/Python_KGlobal_Package'
 
@@ -23,25 +23,32 @@ __all__ = [
     "CredentialsGUI",
     "EmailGUI",
     "SQLServerGUI",
-    "master_salt_filepath",
-    "create_master_salt_key"
+    "default_pepper_filepath",
+    "create_pepper"
 ]
 
 
-def master_salt_filepath():
-    from .data import create_salt
-
+def default_pepper_filepath():
     if isinstance(__path__, list):
         path = __path__[0]
     else:
         path = __path__
 
-    dir_path = os.path.join(path, 'master_salt')
+    dir_path = os.path.join(path, 'Pepper')
+    return os.path.join(dir_path, 'Pepper.key')
 
-    return os.path.join(dir_path, 'salt_key.key')
 
+def create_pepper(filepath=None):
+    from .data.create_pepper import create_pepper
 
-def create_master_salt_key():
-    from .data.create_salt import create_salt
-    ms_fp = master_salt_filepath()
-    create_salt(os.path.dirname(ms_fp), os.path.basename(ms_fp))
+    if filepath and os.path.exists(os.path.dirname(filepath)):
+        if not os.path.isfile(filepath):
+            raise ValueError("'filepath' is not a file")
+        if os.path.splitext(filepath) != '.key':
+            raise ValueError("'filepath' is not a .key extension!")
+
+        pepper_fp = filepath
+    else:
+        pepper_fp = default_pepper_filepath()
+
+    create_pepper(os.path.dirname(pepper_fp), os.path.basename(pepper_fp))

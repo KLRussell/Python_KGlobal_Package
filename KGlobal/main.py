@@ -10,7 +10,7 @@ def main():
     args = sys.argv[1:]
 
     try:
-        opts, args = getopt(args, 'hc', ['help', 'create_master_salt'])
+        opts, args = getopt(args, 'hc', ['help', 'create_pepper'])
     except GetoptError as exc:
         sys.stderr.write("ERROR: %s" % exc)
         sys.stderr.write(os.linesep)
@@ -18,13 +18,18 @@ def main():
 
     for cmd, arg in opts:
         if cmd == '--help' or cmd == '-h':
-            print('KGlobal [-c, --create_master_salt]')
-        elif cmd == '--create_master_salt' or cmd == '-c':
+            print('KGlobal [-c, --create_pepper] <Out Filepath (optional)>')
+        elif cmd == '--create_pepper' or cmd == '-c':
             try:
-                print('Creating Master Salt Key....')
-                from . import create_master_salt_key
-                create_master_salt_key()
-                print('Master Salt Key has been successfully created')
+                if len(arg) == 1:
+                    fp = arg[0]
+                else:
+                    fp = None
+
+                print('Creating Pepper Key....')
+                from . import create_pepper
+                create_pepper(fp)
+                print('Pepper Key has been successfully created')
             except Exception as exc:
                 sys.stderr.write("ERROR: %s" % exc)
                 sys.stderr.write(os.linesep)

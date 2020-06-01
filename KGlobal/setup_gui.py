@@ -10,10 +10,12 @@ import os
 class SG(Tk):
     __pointer = None
 
-    def __init__(self, local_db_dir, main_db_path=None, salt_key_path=None, pointer=None):
+    def __init__(self, local_db_dir, main_db_path=None, pepper_key_path=None, salt_key_path=None, pointer=None):
         Tk.__init__(self)
 
         from .data import DataConfig
+        from . import default_pepper_filepath
+
         if not isinstance(pointer, (DataConfig, type(None))):
             raise ValueError("'pointer' %r is not an instance of DataConfig" % pointer)
         if not isinstance(local_db_dir, str):
@@ -22,12 +24,19 @@ class SG(Tk):
             raise ValueError("'main_db_path' %r is not an instance of String" % main_db_path)
         if not isinstance(salt_key_path, (str, type(None))):
             raise ValueError("'salt_key_path' %r is not an instance of String" % salt_key_path)
+        if not isinstance(pepper_key_path, (str, type(None))):
+            raise ValueError("'pepper_key_path' %r is not an instance of String" % pepper_key_path)
         if not os.path.isdir(local_db_dir):
             raise ValueError("'local_db_dir' %r is not a valid directory" % local_db_dir)
         if main_db_path and not os.path.exists(main_db_path):
             main_db_path = os.path.dirname(main_db_path)
         if salt_key_path and not os.path.exists(salt_key_path):
             salt_key_path = os.path.dirname(salt_key_path)
+
+        if pepper_key_path and os.path.exists(default_pepper_filepath()):
+            self.__pepper_key = default_pepper_filepath()
+        else:
+            raise ValueError("'pepper_key_path' does not exist or wasn't populated. Please specify a pepper key filepath or create a new pepper key (KGlobal -c <dir (optional)>)")
 
         self.__pointer = pointer
         self.__local_db_dir = local_db_dir
@@ -240,14 +249,14 @@ class SG(Tk):
             showerror('Path Exist Error!', 'Salt Key Path does not exist!', parent=self)
         elif not os.path.exists(self.__main_db_path.get()):
             showerror('Path Exist Error!', 'Main DB Path does not exist!', parent=self)
+
         else:
             if not self.__pointer:
                 from .data import DataConfig
-                from . import master_salt_filepath
 
                 self.__pointer = DataConfig(file_dir=self.__local_db_dir,
                                             file_name_prefix='Script_Pointer', file_ext='ptr',
-                                            salt_key_fp=master_salt_filepath(), new_salt_key=False, encrypt=True)
+                                            pepper_key_fp=self.__pepper_key, new_salt_key=False, encrypt=True)
 
             self.__pointer.setcrypt(key='Key_Path', val=self.__salt_key_path.get(), private=True)
             self.__pointer.setcrypt(key='Local_DB_Path', val=os.path.join(self.__local_db_dir, 'Local_Settings.db'),
@@ -276,17 +285,16 @@ class SG(Tk):
         else:
             if not self.__pointer:
                 from .data import DataConfig
-                from . import master_salt_filepath
 
                 self.__pointer = DataConfig(file_dir=self.__local_db_dir,
                                             file_name_prefix='Script_Pointer', file_ext='ptr',
-                                            salt_key_fp=master_salt_filepath(), new_salt_key=False, encrypt=True)
+                                            pepper_key_fp=self.__pepper_key, new_salt_key=False, encrypt=True)
 
             salt_path = os.path.join(self.__salt_key_dir.get(), 'Salt_Key.key')
 
             if not os.path.exists(salt_path):
-                from .data import create_salt
-                create_salt(self.__salt_key_dir.get(), 'Salt_Key.key')
+                from .data import create_key
+                create_key(self.__salt_key_dir.get(), 'Salt_Key.key')
 
             self.__pointer.setcrypt(key='Key_Path', val=salt_path, private=True)
             self.__pointer.setcrypt(key='Local_DB_Path', val=os.path.join(self.__local_db_dir, 'Local_Settings.db'),
@@ -302,15 +310,17 @@ class SetupGUI(SG):
     Setup GUI for Salt Key, Main DB, Local DB, and Pointer files
     """
 
-    def __init__(self, local_db_dir, main_db_path=None, salt_key_path=None, pointer=None):
+    def __init__(self, local_db_dir, main_db_path=None, pepper_key_path=None, salt_key_path=None, pointer=None):
         """
         :param local_db_dir:  Local DB directory (aka local script directory)
         :param main_db_path: (Optional) Main DB filepath
+        :param pepper_key_path (Optional) Pepper Key filepath
         :param salt_key_path: (Optional) Salt Key filepath
         :param pointer: (Optional) Pointer .ptr DataConfig instance class
         """
 
-        SG.__init__(self, local_db_dir, main_db_path, salt_key_path, pointer)
+        SG.__init__(self, local_db_dir=local_db_dir, main_db_path=main_db_path, pepper_key_path=pepper_key_path,
+                    salt_key_path=salt_key_path, pointer=pointer)
         self.mainloop()
 
 
@@ -333,8 +343,8 @@ class CG(Tk):
         self.__user_pass = StringVar()
 
         if cred:
-            self.__user_name = self.__cred.username
-            self.__user_pass = self.__cred.password
+            self.__user_name_obj = self.__cred.username
+            self.__user_pass_obj = self.__cred.password
             self.__user_name.set(self.__user_name_obj.peak())
             self.__user_pass.set(self.__user_pass_obj.peak())
         else:

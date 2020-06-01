@@ -4,6 +4,7 @@ import os
 from .sql import SQLQueue
 from .logging import LogHandle
 from exchangelib import Credentials as Exch_Cred, Configuration, DELEGATE
+from exchangelib.errors import UnauthorizedError, TransportError
 
 import pathlib as pl
 
@@ -18,7 +19,8 @@ class Toolbox(SQLQueue, LogHandle):
     __main_config = None
     __pointer = None
 
-    def __init__(self, script_path, logging_path=None, logging_base_name=None, max_pool_size=SQL_POOLSIZE):
+    def __init__(self, script_path, pepper_key_fp=None, logging_path=None, logging_base_name=None,
+                 max_pool_size=SQL_POOLSIZE):
         """
         Lets setup SQLQueue, Logging, Main Config, and Local Config
 
@@ -41,7 +43,7 @@ class Toolbox(SQLQueue, LogHandle):
         SQLQueue.__init__(self, pool_size=max_pool_size)
         LogHandle.__init__(self, file_dir=file_dir, base_name=base_name)
 
-        from . import master_salt_filepath
+        from . import default_pepper_filepath
         from .data import DataConfig
 
         if not isinstance(script_path, str):
@@ -61,6 +63,11 @@ class Toolbox(SQLQueue, LogHandle):
         else:
             self.__base_name = os.path.splitext(os.path.basename(script_path))[0]
 
+        if pepper_key_fp:
+            self.__pepper_key_fp = pepper_key_fp
+        else:
+            self.__pepper_key_fp = default_pepper_filepath()
+
         if not self.__base_name:
             raise ValueError("'script_path' %r doesn't have a proper file name" % os.path.basename(script_path))
 
@@ -68,7 +75,7 @@ class Toolbox(SQLQueue, LogHandle):
 
         if os.path.exists(script_path):
             self.pointer = DataConfig(file_dir=self.__base_dir, file_name_prefix=self.__base_name, file_ext='ptr',
-                                      salt_key_fp=master_salt_filepath(), new_salt_key=False, encrypt=True)
+                                      pepper_key_fp=self.__pepper_key_fp, new_salt_key=False, encrypt=True)
         else:
             self.__new_pointer()
 
@@ -174,6 +181,19 @@ class Toolbox(SQLQueue, LogHandle):
 
             return True
 
+        def redo_settings(mc):
+            from . import SQLServerGUI
+            s = SQLServerGUI(server=mc['SQL_Server'].decrypt(), database=mc['SQL_Database'].decrypt())
+
+            if not s.server.decrypt() or not s.database.decrypt():
+                return False
+
+            mc['SQL_Server'] = s.server
+            mc['SQL_Database'] = s.database
+            mc.sync()
+
+            return True
+
         if sql_server_check(self.main_config):
             from .sql import SQLConfig
 
@@ -185,6 +205,9 @@ class Toolbox(SQLQueue, LogHandle):
             if engine is None:
                 self.create_sql_engine_to_pool(sql_config=sql_config)
                 engine = self.__find_engine(sql_config)
+
+                if not engine and redo_settings(self.main_config):
+                    return self.default_sql_conn()
 
             return engine
 
@@ -213,6 +236,20 @@ class Toolbox(SQLQueue, LogHandle):
 
             return True
 
+        def email_change(mc):
+            from . import EmailGUI
+
+            s = EmailGUI(server=mc['Exchange_Server'].decrypt(), email_addr=mc['Exchange_Email'].decrypt())
+
+            if not s.server.decrypt() or not s.email_addr.decrypt():
+                return False
+
+            mc['Exchange_Server'] = s.server
+            mc['Exchange_Email'] = s.email_addr
+            mc.sync()
+
+            return True
+
         def cred_check(mc):
             from . import CredentialsGUI
             from .data import DataConfig
@@ -231,14 +268,41 @@ class Toolbox(SQLQueue, LogHandle):
 
             return True
 
+        def cred_change(mc):
+            from . import CredentialsGUI
+
+            s = CredentialsGUI(cred=mc['Exchange_Cred'])
+
+            if not s.credentials.username.decrypt() or not s.credentials.password.decrypt():
+                return False
+
+            mc['Exchange_Cred'] = s.credentials
+            mc.sync()
+
+            return True
+
         from .exchangelib import Exchange
 
         if email_check(self.main_config) and cred_check(self.main_config):
-            cred = Exch_Cred(self.main_config['Exchange_Cred'].username.decrypt(),
-                             self.main_config['Exchange_Cred'].password.decrypt())
-            config = Configuration(server=self.main_config['Exchange_Server'].decrypt(), credentials=cred)
-            return Exchange(primary_smtp_address=self.main_config['Exchange_Email'].decrypt(), config=config,
-                            autodiscover=False, access_type=DELEGATE)
+            try:
+                cred = Exch_Cred(self.main_config['Exchange_Cred'].username.decrypt(),
+                                 self.main_config['Exchange_Cred'].password.decrypt())
+                config = Configuration(server=self.main_config['Exchange_Server'].decrypt(), credentials=cred)
+                return Exchange(primary_smtp_address=self.main_config['Exchange_Email'].decrypt(), config=config,
+                                autodiscover=False, access_type=DELEGATE)
+            except UnauthorizedError as e:
+                print("Error Code {0}, {1}".format(type(e).__name__, str(e)))
+
+                if cred_change(self.main_config):
+                    self.default_exchange_conn()
+
+            except (ValueError, TransportError) as e:
+                print("Error Code {0}, {1}".format(type(e).__name__, str(e)))
+
+                if email_change(self.main_config):
+                    self.default_exchange_conn()
+            except Exception as e:
+                print("Error Code {0}, {1}".format(type(e).__name__, str(e)))
 
     def __find_engine(self, config):
         from .sql import SQLConfig, SQLEngineClass
@@ -253,8 +317,8 @@ class Toolbox(SQLQueue, LogHandle):
     def __new_pointer(self, pointer=None, old_key_path=None, old_db_path=None):
         from .setup_gui import SetupGUI
 
-        obj = SetupGUI(local_db_dir=self.__base_dir, pointer=pointer, salt_key_path=old_key_path,
-                       main_db_path=old_db_path)
+        obj = SetupGUI(local_db_dir=self.__base_dir, pointer=pointer, pepper_key_path=self.__pepper_key_fp,
+                       salt_key_path=old_key_path, main_db_path=old_db_path)
 
         if obj.pointer:
             self.pointer = obj.pointer
