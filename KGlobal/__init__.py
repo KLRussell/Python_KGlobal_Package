@@ -11,7 +11,7 @@ import pkg_resources
 
 __package_name__ = 'KGlobal'
 __author__ = 'Kevin Russell'
-__version__ = "1.3.0"
+__version__ = "1.3.3"
 __description__ = '''File, encryption, SQL, XML, and etc...'''
 __url__ = 'https://github.com/KLRussell/Python_KGlobal_Package'
 
@@ -39,7 +39,7 @@ def default_pepper_filepath():
 
 
 def create_pepper(filepath=None):
-    from .data.create_pepper import create_pepper
+    from .data.create_key import create_key
 
     if filepath and os.path.exists(os.path.dirname(filepath)):
         if not os.path.isfile(filepath):
@@ -51,4 +51,4 @@ def create_pepper(filepath=None):
     else:
         pepper_fp = default_pepper_filepath()
 
-    create_pepper(os.path.dirname(pepper_fp), os.path.basename(pepper_fp))
+    create_key(os.path.dirname(pepper_fp), os.path.basename(pepper_fp))

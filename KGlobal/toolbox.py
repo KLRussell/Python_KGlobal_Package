@@ -19,12 +19,13 @@ class Toolbox(SQLQueue, LogHandle):
     __main_config = None
     __pointer = None
 
-    def __init__(self, script_path, pepper_key_fp=None, logging_path=None, logging_base_name=None,
-                 max_pool_size=SQL_POOLSIZE):
+    def __init__(self, script_path, max_pool_size=SQL_POOLSIZE, pepper_key_fp=None, logging_path=None,
+                 logging_base_name=None):
         """
         Lets setup SQLQueue, Logging, Main Config, and Local Config
 
         :param script_path: Script/Application filepath (ie __file__)
+        :param pepper_key_fp: (Optional) Filepath to where Pepper key file is located
         :param logging_path: (Optional) Filepath to place logging files
         :param max_pool_size: (Optional) SQL max poolsize for connection queue
         """
