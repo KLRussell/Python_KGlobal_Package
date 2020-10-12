@@ -19,17 +19,16 @@ class BaseSQLQueue(object):
     QUERY_DEFAULT_TIMEOUT = 0
     DEFAULT_CONNECTION_SIZE = 10
 
-    def __init__(self, queue_id, pool_size):
+    def __init__(self, queue_id, max_pool_size):
         """
         Class to add different SQL engines to a pool
 
         :param queue_id: [Optional] Queue_ID
-        :param pool_size: [Optional] Pool_Size for SQL engines
+        :param max_pool_size: [Optional] Pool_Size for SQL engines
         """
-
         self.__queue_id = queue_id
-        self.__pool_size = pool_size
-        self.__sql_engine_pool = LifoQueue(maxsize=pool_size)
+        self.__pool_size = max_pool_size
+        self.__sql_engine_pool = LifoQueue(maxsize=max_pool_size)
         self.__sql_engine_pool_lock = Lock()
         self.__disabled_pool = list()
 
@@ -89,6 +88,7 @@ class BaseSQLQueue(object):
                 sql_engine.engine_sql_class = self
 
             self.queue_sql_engine_to_pool(sql_engine)
+            return sql_engine
         else:
             log.error('Queue Pool %s: Is in disabled state. Please enable', self.__queue_id)
 
@@ -151,22 +151,24 @@ class BaseSQLQueue(object):
                 raise ValueError("'engine' %r is not in the SQL Engine Pool" % sql_engine)
 
             with self.__sql_engine_pool_lock:
+
                 log.debug('Queue Pool %s: Removed SQL engine %s from pool', self.__queue_id, sql_engine.engine_id)
                 self.__sql_engine_pool.queue.remove(sql_engine)
         else:
             log.error('Queue Pool %s: Is in disabled state. Please enable', self.__queue_id)
 
-    def close_pool(self):
+    def close_pool(self, enable_log=True):
         """
         Closes all connections, cursors from all SQLEngines stored in sql queue pool and empty pool
         """
 
         with self.__sql_engine_pool_lock:
-            log.debug('Queue Pool %s: Closing SQL Engine pool', self.__queue_id)
+            if enable_log:
+                log.debug('Queue Pool %s: Closing SQL Engine pool', self.__queue_id)
 
             while True:
                 try:
-                    self.__sql_engine_pool.get(block=False).close_connections(False)
+                    self.__sql_engine_pool.get(block=False).close_connections(False, enable_log=enable_log)
                 except Empty:
                     break
 
@@ -207,14 +209,19 @@ class BaseSQLQueue(object):
             log.warning('Queue Pool %s: Is already enabled', self.__queue_id)
 
     def __del__(self):
-        self.close_pool()
+        self.close_pool(enable_log=False)
 
     def __getstate__(self):
         # The pool and lock cannot be pickled
         self.disable_pool()
         state = self.__dict__.copy()
-        del state['__sql_engine_pool']
-        del state['__sql_engine_pool_lock']
+
+        if state and '__sql_engine_pool' in state.keys():
+            del state['__sql_engine_pool']
+
+        if state and '__sql_engine_pool_lock' in state.keys():
+            del state['__sql_engine_pool_lock']
+
         return state
 
     def __setstate__(self, state):
@@ -226,12 +233,15 @@ class BaseSQLQueue(object):
 
 
 class CatchSQLQueue(type):
-    SQL_POOLSIZE = 10
     _sql_queue_cache = {}
     _sql_queue_cache_lock = Lock()
 
-    def __call__(cls, queue_id=sum(map(ord, str(os.urandom(100)))), pool_size=SQL_POOLSIZE):
-        _sql_queue_cache_key = queue_id
+    def __call__(cls, *args, **kwargs):
+        if 'queue_id' in kwargs.keys():
+            _sql_queue_cache_key = kwargs['queue_id']
+        else:
+            _sql_queue_cache_key = id(cls)
+
         sql = cls._sql_queue_cache.get(_sql_queue_cache_key)
 
         if isinstance(sql, Exception):
@@ -252,7 +262,7 @@ class CatchSQLQueue(type):
             log.debug("SQLQueue __call__ cache miss. Adding key '%s'", str(_sql_queue_cache_key))
 
             try:
-                sql = super(CatchSQLQueue, cls).__call__(queue_id, pool_size)
+                sql = super(CatchSQLQueue, cls).__call__(*args, **kwargs)
             except TransportError as e:
                 log.warning('Failed to create cached SQLQueue with key %s: %s', _sql_queue_cache_key, e)
                 cls._sql_queue_cache[_sql_queue_cache_key] = e
@@ -274,11 +284,15 @@ class CatchSQLQueue(type):
 
 
 class SQLQueue(BaseSQLQueue, metaclass=CatchSQLQueue):
-    SQL_POOLSIZE = 10
-
     """
-    Creates a SQLQueue pool that is cached for SQLEngine instance clases
+    Creates a SQLQueue pool that is cached for SQLEngine instance classes
     """
 
-    def __init__(self, queue_id=sum(map(ord, str(os.urandom(100)))), pool_size=SQL_POOLSIZE):
-        super().__init__(queue_id, pool_size)
+    def __init__(self, queue_id=None, max_pool_size=None):
+        if not queue_id:
+            queue_id = id(self.__class__)
+
+        if not max_pool_size:
+            max_pool_size = 10
+
+        super().__init__(queue_id=queue_id, max_pool_size=max_pool_size)

@@ -146,8 +146,6 @@ class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
 
                     if test_conn:
                         return False
-                    else:
-                        raise
         else:
             engine = None
 
@@ -335,14 +333,18 @@ class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
         else:
             return self.__cursor_results
 
-    def close_connections(self, destroy_self=False):
+    def close_connections(self, destroy_self=False, enable_log=True):
         """
         Closes all cursors and engines
 
         :param destroy_self: (True/False) Request self destruction of class
+        :param enable_log: (True/False) Enables logging
         """
-        log.debug('SQL Connection (%s): Releasing SQL engine %s', str(self.__sql_config), self.engine_id)
-        self.__release_coms()
+
+        if enable_log:
+            log.debug('SQL Connection (%s): Releasing SQL engine %s', str(self.__sql_config), self.engine_id)
+
+        self.__release_coms(enable_log=enable_log)
 
         if destroy_self and self.__engine_sql_class:
             self.__engine_sql_class.remove_engine_from_pool(self)
@@ -365,12 +367,12 @@ class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
         if len(self.__cursors.queue) > 0:
             self.__cursors.queue.remove(cursor)
 
-    def __release_coms(self):
+    def __release_coms(self, enable_log=True):
         if self.__cursors.qsize() > 0:
             with self.__engine_lock:
                 while True:
                     try:
-                        self.__cursors.get(block=False).close()
+                        self.__cursors.get(block=False).close(write_log=enable_log)
                     except Empty:
                         break
 
@@ -381,8 +383,13 @@ class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
         # The pool and lock cannot be pickled
         self.__release_coms()
         state = self.__dict__.copy()
-        del state['__cursors']
-        del state['__engine_lock']
+
+        if state and '__cursors' in state.keys():
+            del state['__cursors']
+
+        if state and '__engine_lock' in state.keys():
+            del state['__engine_lock']
+
         return state
 
     def __setstate__(self, state):
@@ -410,6 +417,24 @@ class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
 
 
 def close_engine(engine):
+    if engine and hasattr(engine, 'cancel'):
+        try:
+            engine.cancel()
+        except:
+            pass
+
+    if engine and hasattr(engine, 'connection') and hasattr(engine.connection, 'cancel'):
+        try:
+            engine.connection.cancel()
+        except:
+            pass
+
+    if engine and hasattr(engine, 'connection') and hasattr(engine.connection, 'close'):
+        try:
+            engine.connection.close()
+        except:
+            pass
+
     if engine and hasattr(engine, 'close'):
         try:
             engine.close()

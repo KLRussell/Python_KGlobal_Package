@@ -18,6 +18,50 @@ class BaseFileConfig(object):
     pass
 
 
+class BaseKeyPtr(object):
+    pass
+
+
+class KeyPtr(BaseKeyPtr, PickleMixIn):
+    """
+    Key Pointer class for Key.ptr files
+    """
+
+    __slots__ = ('salt_key_fp', 'pepper_key_fp')
+
+    def __init__(self, salt_key_fp, pepper_key_fp):
+        if not isinstance(salt_key_fp, str):
+            raise ValueError("'salt_key_fp' %r is not an str instance" % salt_key_fp)
+        if not isinstance(pepper_key_fp, str):
+            raise ValueError("'pepper_key_fp' %r is not an str instance" % pepper_key_fp)
+        if not os.path.isfile(salt_key_fp):
+            raise ValueError("'salt_key_fp' %s is not a valid filepath" % salt_key_fp)
+        if not os.path.isfile(pepper_key_fp):
+            raise ValueError("'pepper_key_fp' %s is not a valid filepath" % os.path.basename(pepper_key_fp))
+        if not os.path.exists(salt_key_fp):
+            raise ValueError("'salt_key_fp' %s does not exist" % os.path.basename(pepper_key_fp))
+
+        self.__salt_key_fp = salt_key_fp
+        self.__pepper_key_fp = pepper_key_fp
+
+    def get_attr(self):
+        """
+        :return: Returns Salt & Pepper Filepath
+        """
+
+        return [self.__salt_key_fp, self.__pepper_key_fp]
+
+    def __eq__(self, other):
+        for k in self.__slots__:
+            if getattr(self, k) != getattr(other, k):
+                return False
+
+        return True
+
+    def __repr__(self):
+        return self.__class__.__name__ + repr((str(hasH(self.__salt_key_fp)), str(hash(self.__pepper_key_fp))))
+
+
 class FileConfig(BaseFileConfig, PickleMixIn):
     """
     File Configuration class object that is picked before writing to file
@@ -70,11 +114,11 @@ class BaseDataConfig(collections.abc.MutableMapping):
     """
 
     __salt_key = None
+    __pepper_key = None
     __action_lock = None
     __marker = object()
 
-    def __init__(self, file_dir, file_name_prefix, file_ext='db', new_salt_key=False, pepper_key_fp=None,
-                 salt_key_fp=None, encrypt=True):
+    def __init__(self, file_dir, file_name_prefix, file_ext='db', encrypt=True):
         """
         Show me the location and I will settle file writing there!
         Make sure to specify salt key filepath else class will assume a new salt key
@@ -82,7 +126,7 @@ class BaseDataConfig(collections.abc.MutableMapping):
 
         :param file_dir: File directory for where the .db file will be stored
         :param file_name_prefix: File name prefix you want the .db to be named
-        :param salt_key_fp: [Optional] File path to an already existing pickled SaltHandle with salt key written in file
+        :param file_ext: Extension name of database file
         :param encrypt: [Optional] (True/False) Whether you want class to encrypt written information in file
         """
 
@@ -94,18 +138,20 @@ class BaseDataConfig(collections.abc.MutableMapping):
             raise ValueError("'file_name' There cannot be an extension")
         if not os.path.exists(file_dir):
             raise ValueError("'file_dir' Filepath does not exist")
-        if pepper_key_fp and not os.path.exists(os.path.dirname(pepper_key_fp)):
-            raise ValueError("'pepper_key_fp' %r directory does not exist" % pepper_key_fp)
-        if salt_key_fp and not os.path.exists(os.path.dirname(salt_key_fp)):
-            raise ValueError("'salt_key_fp' %r directory does not exist" % salt_key_fp)
-        if new_salt_key and not salt_key_fp:
-            raise ValueError("'salt_key_fp' is not populated")
-        if not new_salt_key and salt_key_fp and not os.path.exists(salt_key_fp):
-            raise ValueError("'salt_key_fp' %r does not exist as a salt key file" % salt_key_fp)
-        if pepper_key_fp and not os.path.exists(pepper_key_fp):
-            raise ValueError("'salt_key_fp' %r does not exist as a salt key file" % pepper_key_fp)
         if file_ext.find('.') > -1:
             raise ValueError("'file_ext' %r has a . in it. Please remove" % file_ext)
+
+        from .. import default_key_dir
+        key_ptr_fp = os.path.join(default_key_dir(), "Key.dir")
+        salt_key_fp = os.path.join(default_key_dir(), "Salt.key")
+        pepper_key_fp = os.path.join(default_key_dir(), "Pepper.key")
+
+        if os.path.exists(salt_key_fp) and os.path.exists(pepper_key_fp):
+            self.__set_keys(salt_key_fp=salt_key_fp, pepper_key_fp=pepper_key_fp)
+        elif os.path.exists(key_ptr_fp):
+            self.__set_keys(key_ptr_fp=key_ptr_fp)
+        else:
+            raise ValueError("Salt & Pepper key setup hasn't been done. Please set that up")
 
         self.__config = dict()
         self.__buffer_write = None
@@ -115,24 +161,7 @@ class BaseDataConfig(collections.abc.MutableMapping):
         self.__change_list = dict()
         self.__action_lock = Lock()
 
-        if new_salt_key or pepper_key_fp:
-            self.__config_key_fp = pepper_key_fp
-            self.__set_pepper()
-        elif salt_key_fp:
-            self.__config_key_fp = salt_key_fp
-            self.__set_salt()
-        else:
-            raise ValueError("salt_key_fp and pepper_key_fp is not specified. Please specify filepath")
-
         self.sync()
-
-    @property
-    def grab_salt_key(self):
-        """
-        :return: Returns SaltHandle class with salt key attribute
-        """
-
-        return self.__salt_key
 
     def sync(self):
         """
@@ -285,7 +314,7 @@ class BaseDataConfig(collections.abc.MutableMapping):
             from .cryptography import CryptHandle
 
             self.__change_list[key] = True
-            self.__config[key] = CryptHandle(salt=self.__salt_key, alias=key, private=private)
+            self.__config[key] = CryptHandle(alias=key, private=private)
 
             if val:
                 self.__config[key].encrypt(val)
@@ -323,26 +352,41 @@ class BaseDataConfig(collections.abc.MutableMapping):
 
         return list(self.__config.keys())
 
-    def __set_salt(self):
-        from .cryptography import SaltHandle
+    def __set_keys(self, salt_key_fp=None, pepper_key_fp=None, key_ptr_fp=None):
+        if salt_key_fp and pepper_key_fp and os.path.exists(salt_key_fp) and os.path.exists(pepper_key_fp):
+            from .cryptography import SaltHandle
 
-        if os.path.exists(self.__config_key_fp):
-            salt_key = file_read_bytes(self.__config_key_fp)
+            salt_key = file_read_bytes(salt_key_fp)
+            pepper_key = file_read_bytes(pepper_key_fp)
+
+            if salt_key and isinstance(salt_key, bytes):
+                self.__salt_key = pickle.loads(salt_key)
+
+            if pepper_key and isinstance(pepper_key, bytes):
+                self.__pepper_key = pickle.loads(pepper_key)
+
+            if not self.__salt_key or not isinstance(self.__salt_key, SaltHandle):
+                raise ValueError("Was unable to load salt key object")
+            elif not self.__pepper_key or not isinstance(self.__pepper_key, SaltHandle):
+                raise ValueError("Was unable to load pepper key object")
+        elif key_ptr_fp and os.path.exists(key_ptr_fp):
+            from .cryptography import SaltHandle
+
+            key_ptr = file_read_bytes(key_ptr_fp)
+
+            if key_ptr and isinstance(key_ptr, bytes):
+                key_ptr_cls = pickle.loads(key_ptr)
+
+                if key_ptr_cls and isinstance(key_ptr_cls, KeyPtr):
+                    salt_key_fp, pepper_key_fp = key_ptr_cls.get_attr()
+                    self.__set_keys(salt_key_fp=salt_key_fp, pepper_key_fp=pepper_key_fp)
+                else:
+                    raise ValueError("'key_ptr_fp' %s file does not hold the KeyPtr class"
+                                     % os.path.basename(key_ptr_fp))
+            else:
+                raise ValueError("'key_ptr_fp' %s file does not hold a pickled object" % os.path.basename(key_ptr_fp))
         else:
-            salt_key = None
-
-        if salt_key and isinstance(salt_key, bytes):
-            self.__salt_key = pickle.loads(salt_key)
-
-        if not self.__salt_key or not isinstance(self.__salt_key, SaltHandle):
-            self.__salt_key = SaltHandle()
-            file_write_bytes(self.__config_key_fp, pickle.dumps(self.__salt_key))
-
-    def __set_pepper(self):
-        from .cryptography import SaltHandle
-
-        pepper_key = file_read_bytes(self.__config_key_fp)
-        self.__salt_key = pickle.loads(pepper_key)
+            raise ValueError("No salt_key_fp & pepper_key_fp or key_ptr_fp was specified")
 
     def __package_config(self):
         from .cryptography import CryptHandle
@@ -359,7 +403,7 @@ class BaseDataConfig(collections.abc.MutableMapping):
                     dict_byte[key] = pickle.dumps(val)
 
             if self.__encrypt:
-                crypt_obj = CryptHandle(salt=self.__salt_key)
+                crypt_obj = CryptHandle(salt=self.__pepper_key)
                 crypt_obj.encrypt(dict_byte)
                 dict_byte = crypt_obj.get_attr()[1]
 
@@ -379,7 +423,7 @@ class BaseDataConfig(collections.abc.MutableMapping):
             encrypt, my_dict = config.get_attr()
 
             if encrypt:
-                crypt_obj = CryptHandle(salt=self.__salt_key, enc_obj=my_dict)
+                crypt_obj = CryptHandle(salt=self.__pepper_key, enc_obj=my_dict)
                 my_dict = crypt_obj.decrypt()
 
             if my_dict and isinstance(my_dict, dict):
@@ -410,7 +454,10 @@ class BaseDataConfig(collections.abc.MutableMapping):
     def __getstate__(self):
         # The lock cannot be pickled
         state = self.__dict__.copy()
-        del state['__action_lock']
+
+        if state and '__action_lock' in state.keys():
+            del state['__action_lock']
+
         return state
 
     def __setstate__(self, state):
@@ -427,7 +474,7 @@ class BaseDataConfig(collections.abc.MutableMapping):
             return self.__config[key]
 
     def __setitem__(self, key, value):
-        if isinstance(key, str) and value:
+        if isinstance(key, str):
             self.__change_list[key] = True
             self.__config[key] = value
 
@@ -459,10 +506,8 @@ class BaseDataConfig(collections.abc.MutableMapping):
 
 
 class DataConfig(BaseDataConfig):
-    def __init__(self, file_dir, file_name_prefix, file_ext='db', new_salt_key=False, pepper_key_fp=None,
-                 salt_key_fp=None, encrypt=True):
+    def __init__(self, file_dir, file_name_prefix, file_ext='db', encrypt=True):
         BaseDataConfig.__init__(self, file_dir=file_dir, file_name_prefix=file_name_prefix, file_ext=file_ext,
-                                new_salt_key=new_salt_key, pepper_key_fp=pepper_key_fp, salt_key_fp=salt_key_fp,
                                 encrypt=encrypt)
 
 
@@ -540,8 +585,9 @@ def file_delete(file_path):
         try:
             os.remove(file_path)
         except OSError as e:
-            if e.errno != errno.ENOENT:
-                raise
+            print("Error Code '{0}', {1}".format(type(e).__name__, str(e)))
+
+            pass
 
 
 def file_move(from_file_path, to_file_path, migrate=False):

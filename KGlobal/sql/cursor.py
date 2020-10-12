@@ -56,6 +56,7 @@ class SQLCursor(Thread):
         self.__execute_errors = None
         self.__execute_results = None
         self.__is_pending = Lock()
+        self.__is_closing = Lock()
         self.cursor_id = sum(map(ord, str(os.urandom(100))))
         super(SQLCursor, self).__init__()
 
@@ -125,7 +126,7 @@ class SQLCursor(Thread):
                 self.execute(query_str=params['query_str'], execute=params['execute'])
             elif function == 'tables':
                 self.tables()
-            else:
+            elif function is not None:
                 raise ValueError("'function' is an invalid function command")
 
     def close(self, write_log=True):
@@ -136,20 +137,21 @@ class SQLCursor(Thread):
         :param write_log: (Optional) [True/False]
         """
 
-        if self.__cursor and hasattr(self.__cursor, 'cancel'):
-            try:
-                if write_log:
-                    if self.__engine_class:
-                        log.debug('SQL Connection (%s): Canceling & Closing SQL cursor %s transaction',
-                                  self.__engine_class.get_engine_id, self.cursor_id)
-                    else:
-                        log.debug('Canceling & Closing SQL cursor %s transaction', self.cursor_id)
+        with self.__is_closing:
+            if self.__cursor and hasattr(self.__cursor, 'cancel'):
+                try:
+                    if write_log:
+                        if self.__engine_class:
+                            log.debug('SQL Connection (%s): Canceling & Closing SQL cursor %s transaction',
+                                      self.__engine_class.get_engine_id, self.cursor_id)
+                        else:
+                            log.debug('Canceling & Closing SQL cursor %s transaction', self.cursor_id)
 
-                self.__cursor.cancel()
-            except:
-                pass
-            finally:
-                self.__close()
+                    self.__cursor.cancel()
+                except:
+                    pass
+                finally:
+                    self.__close()
 
     def rollback(self, write_log=True):
         """
@@ -158,18 +160,21 @@ class SQLCursor(Thread):
         :param write_log: (Optional) [True/False]
         """
 
-        if self.__cursor and hasattr(self.__cursor, 'rollback'):
-            try:
-                if write_log:
-                    if self.__engine_class:
-                        log.debug('SQL Connection (%s): Rollback & Close SQL cursor %s transaction',
-                                  self.__engine_class.get_engine_id, self.cursor_id)
-                    else:
-                        log.debug('Rollback & Close SQL cursor %s transaction', self.cursor_id)
+        with self.__is_closing:
+            if self.__cursor and hasattr(self.__cursor, 'rollback'):
+                try:
+                    if write_log:
+                        if self.__engine_class:
+                            log.debug('SQL Connection (%s): Rollback & Close SQL cursor %s transaction',
+                                      self.__engine_class.get_engine_id, self.cursor_id)
+                        else:
+                            log.debug('Rollback & Close SQL cursor %s transaction', self.cursor_id)
 
-                self.__cursor.rollback()
-            finally:
-                self.__close()
+                    self.__cursor.rollback()
+                except:
+                    pass
+                finally:
+                    self.__close()
 
     def commit(self, write_log=True):
         """
@@ -178,20 +183,21 @@ class SQLCursor(Thread):
         :param write_log: (Optional) [True/False]
         """
 
-        if self.__cursor and hasattr(self.__cursor, 'commit'):
-            try:
-                if write_log:
-                    if self.__engine_class:
-                        log.debug('SQL Connection (%s): Commit & Close SQL cursor %s transaction',
-                                  self.__engine_class.get_engine_id, self.cursor_id)
-                    else:
-                        log.debug('Commit & Close SQL cursor %s transaction', self.cursor_id)
+        try:
+            with self.__is_closing:
+                if self.__cursor and hasattr(self.__cursor, 'commit'):
+                    if write_log:
+                        if self.__engine_class:
+                            log.debug('SQL Connection (%s): Commit & Close SQL cursor %s transaction',
+                                      self.__engine_class.get_engine_id, self.cursor_id)
+                        else:
+                            log.debug('Commit & Close SQL cursor %s transaction', self.cursor_id)
 
-                self.__cursor.commit()
-            except:
-                self.rollback()
-            else:
-                self.__close()
+                    self.__cursor.commit()
+                    self.__close()
+        except:
+            self.rollback()
+            pass
 
     def __close(self):
         from .engine import close_engine
@@ -202,7 +208,6 @@ class SQLCursor(Thread):
             except:
                 pass
 
-        close_engine(self.__raw_engine)
         close_engine(self.__engine)
 
         if self.__engine_class:
@@ -285,6 +290,8 @@ class SQLCursor(Thread):
                 self.__execute_errors = [e.args[0], e.args[1]]
                 self.rollback()
             except (AttributeError, Exception) as e:
+                from traceback import format_exc
+                print(format_exc())
                 self.__execute_errors = [type(e).__name__, str(e)]
                 self.rollback()
         else:
@@ -317,7 +324,7 @@ class EngineCursor(Thread):
         :param action_params: (Optional) upload_df() command parameters
         """
 
-        if not isinstance(self.__engine, Engine):
+        if not isinstance(alch_engine, Engine):
             raise ValueError("'alch_engine' %r is not an Alchemy Engine instance" % alch_engine)
 
         if action and action != 'upload_df':
@@ -327,6 +334,7 @@ class EngineCursor(Thread):
         self.__engine = alch_engine
         self.__cursor_action = [action, action_params]
         self.__is_pending = Lock()
+        self.__is_closing = Lock()
         self.__errors = None
         self.cursor_id = sum(map(ord, str(os.urandom(100))))
         super(EngineCursor, self).__init__()
@@ -401,8 +409,8 @@ class EngineCursor(Thread):
                 self.upload_df(dataframe=params['dataframe'], table_name=params['table_name'],
                                table_schema=params['table_schema'], if_exists=params['if_exists'],
                                index=params['index'], index_label=params['index_label'])
-            else:
-                raise ValueError("'function' is an invalid function command")
+            elif function is not None:
+                raise ValueError("'function' %s is an invalid function command" % function)
 
     def close(self):
         """
@@ -410,23 +418,23 @@ class EngineCursor(Thread):
         SQLEngine's class instance
         """
 
-        if self.__engine:
-            from .engine import close_engine
+        with self.__is_closing:
+            if self.__engine:
+                from .engine import close_engine
 
-            try:
-                if hasattr(self.__engine, 'cancel'):
-                    self.__engine.cancel()
+                try:
+                    if hasattr(self.__engine, 'cancel'):
+                        self.__engine.cancel()
 
-                if hasattr(self.__engine, 'rollback'):
-                    self.__engine.rollback()
-            except SQLAlchemyError as e:
-                log.error(e.code, e.__dict__['orig'])
-                pass
+                    if hasattr(self.__engine, 'rollback'):
+                        self.__engine.rollback()
+                except SQLAlchemyError as e:
+                    log.error(e.code, e.__dict__['orig'])
+                    pass
 
-            close_engine(self.__engine)
+                close_engine(self.__engine)
+
             self.__engine = None
-        else:
-            raise ValueError('Engine is closed. Unable to close engine')
 
     def upload_df(self, dataframe, table_name, table_schema=None, if_exists='append', index=True, index_label='ID'):
         """

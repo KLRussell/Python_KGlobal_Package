@@ -8,10 +8,11 @@ from .setup_gui import CredentialsGUI, EmailGUI, SQLServerGUI
 
 import os
 import pkg_resources
+import sys
 
 __package_name__ = 'KGlobal'
 __author__ = 'Kevin Russell'
-__version__ = "1.3.3"
+__version__ = "1.6.1.4"
 __description__ = '''File, encryption, SQL, XML, and etc...'''
 __url__ = 'https://github.com/KLRussell/Python_KGlobal_Package'
 
@@ -23,32 +24,16 @@ __all__ = [
     "CredentialsGUI",
     "EmailGUI",
     "SQLServerGUI",
-    "default_pepper_filepath",
-    "create_pepper"
+    "default_key_dir"
 ]
 
 
-def default_pepper_filepath():
-    if isinstance(__path__, list):
-        path = __path__[0]
+def default_key_dir():
+    if getattr(sys, 'frozen', False):
+        path = sys._MEIPASS
+    elif isinstance(__path__, list):
+        path = os.path.join(__path__[0], "Keys")
     else:
-        path = __path__
+        path = os.path.join(__path__, "Keys")
 
-    dir_path = os.path.join(path, 'Pepper')
-    return os.path.join(dir_path, 'Pepper.key')
-
-
-def create_pepper(filepath=None):
-    from .data.create_key import create_key
-
-    if filepath and os.path.exists(os.path.dirname(filepath)):
-        if not os.path.isfile(filepath):
-            raise ValueError("'filepath' is not a file")
-        if os.path.splitext(filepath) != '.key':
-            raise ValueError("'filepath' is not a .key extension!")
-
-        pepper_fp = filepath
-    else:
-        pepper_fp = default_pepper_filepath()
-
-    create_key(os.path.dirname(pepper_fp), os.path.basename(pepper_fp))
+    return path

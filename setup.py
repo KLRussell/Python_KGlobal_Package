@@ -4,7 +4,7 @@ from setuptools import setup
 if __name__ == '__main__':
     setup(
         name='KGlobal',
-        version='1.3.3',
+        version='1.6.1.4',
         author='Kevin Russell',
         packages=['KGlobal', 'KGlobal.data', 'KGlobal.sql'],
         # py_modules=['KGlobal'],
@@ -21,6 +21,10 @@ if __name__ == '__main__':
             'exchangelib',
             'bs4',
             'six',
+            'xlrd',
+            'XlsxWriter',
+            'Xlwt',
+            'Openpyxl'
         ],
         package_data={
             "": ["*.txt", "*.md"],

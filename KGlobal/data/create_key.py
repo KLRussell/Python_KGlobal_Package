@@ -6,7 +6,7 @@ import os
 
 def create_key(key_dir, key_fn):
     """
-    Create pepper the way I like it. Spicy!
+    Create salt or pepper the way I like it. Salty or Spicy!
 
     :param key_dir: Directory for where the key file will be created
     :param key_fn: File name for what the key file will be saved as
