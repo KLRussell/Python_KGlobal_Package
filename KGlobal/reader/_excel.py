@@ -12,13 +12,13 @@ class OpenPYXLReader(FileHandler):
     def __init__(self, file_path, flag_read_only=False, sheet_names=None, header=0, names=None, index_col=None,
                  usecols=None, squeeze=False, dtype=None, true_values=None, false_values=None, skiprows=0, nrows=0,
                  na_values=None, verbose=False, parse_dates=False, date_parser=None, thousands=None, comment=None,
-                 skipfooter=0, convert_float=True, mangle_dupe_cols=True):
+                 skipfooter=0, convert_float=True, mangle_dupe_cols=True, **kwargs):
         super().__init__(file_path=file_path, flag_read_only=flag_read_only, sheet_names=sheet_names, header=header,
                          names=names, index_col=index_col, usecols=usecols, squeeze=squeeze, dtype=dtype,
                          true_values=true_values, false_values=false_values, skiprows=skiprows, nrows=nrows,
                          na_values=na_values, verbose=verbose, parse_dates=parse_dates, date_parser=date_parser,
                          thousands=thousands, comment=comment, skipfooter=skipfooter, convert_float=convert_float,
-                         mangle_dupe_cols=mangle_dupe_cols)
+                         mangle_dupe_cols=mangle_dupe_cols, **kwargs)
 
     def parse(self):
         if self.streams:
@@ -31,10 +31,9 @@ class OpenPYXLReader(FileHandler):
         from openpyxl import load_workbook
 
         xls_file = load_workbook(self.file_path)
+        sheets = dict()
 
         try:
-            sheets = dict()
-
             if self.flag_read_only and xls_file.read_only:
                 raise ReadOnlyError
 
@@ -46,11 +45,11 @@ class OpenPYXLReader(FileHandler):
                         self.__openpyxl_sheet(sheet=xls_ws, handler=handler, buffer=buffer)
                     else:
                         sheets[tab] = self.__openpyxl_sheet(sheet=xls_ws, handler=handler, buffer=buffer)
-
-            if sheets:
-                return sheets
         finally:
             xls_file.close()
+
+        if sheets:
+            return sheets
 
     def __openpyxl_sheet(self, sheet, handler=None, buffer=None):
         import openpyxl
@@ -66,7 +65,8 @@ class OpenPYXLReader(FileHandler):
         last_row_with_data = -1
 
         for row in sheet.rows:
-            if 0 < self.skiprows <= row_number <= self.nrows and 0 < self.header <= row_number:
+            if 0 <= self.skiprows <= row_number and 0 <= self.header <= row_number and (row_number <= self.nrows
+                                                                                        or self.nrows == 0):
                 converted_row = [self.__convert_cell(cell, self.convert_float) for cell in row]
                 data.append(converted_row)
 
@@ -88,7 +88,7 @@ class OpenPYXLReader(FileHandler):
 
         if not df.empty and handler:
             handler(df, row_number - len(df), row_number)
-        elif not handler:
+        elif handler is None:
             return df
 
     @staticmethod
@@ -135,13 +135,13 @@ class ODFReader(FileHandler):
     def __init__(self, file_path, flag_read_only=False, sheet_names=None, header=0, names=None, index_col=None,
                  usecols=None, squeeze=False, dtype=None, true_values=None, false_values=None, skiprows=0, nrows=0,
                  na_values=None, verbose=False, parse_dates=False, date_parser=None, thousands=None, comment=None,
-                 skipfooter=0, convert_float=True, mangle_dupe_cols=True):
+                 skipfooter=0, convert_float=True, mangle_dupe_cols=True, **kwargs):
         super().__init__(file_path=file_path, flag_read_only=flag_read_only, sheet_names=sheet_names, header=header,
                          names=names, index_col=index_col, usecols=usecols, squeeze=squeeze, dtype=dtype,
                          true_values=true_values, false_values=false_values, skiprows=skiprows, nrows=nrows,
                          na_values=na_values, verbose=verbose, parse_dates=parse_dates, date_parser=date_parser,
                          thousands=thousands, comment=comment, skipfooter=skipfooter, convert_float=convert_float,
-                         mangle_dupe_cols=mangle_dupe_cols)
+                         mangle_dupe_cols=mangle_dupe_cols, **kwargs)
 
     @property
     def empty_value(self) -> str:
@@ -159,6 +159,7 @@ class ODFReader(FileHandler):
         from odf.table import Table
 
         self.__odf_file = load(self.file_path)
+        sheets = dict()
 
         try:
             for xls_ws in self.__odf_file.getElementsByType(Table):
@@ -169,11 +170,11 @@ class ODFReader(FileHandler):
                         self.__odf_sheet(sheet=xls_ws, handler=handler, buffer=buffer)
                     else:
                         sheets[tab] = self.__odf_sheet(sheet=xls_ws, handler=handler, buffer=buffer)
-
-            if sheets:
-                return sheets
         finally:
             self.__odf_file.close()
+
+        if sheets:
+            return sheets
 
     def __odf_sheet(self, sheet, handler=None, buffer=None):
         from odf.table import CoveredTableCell, TableCell, TableRow
@@ -338,13 +339,13 @@ class XLRDReader(FileHandler):
     def __init__(self, file_path, flag_read_only=False, sheet_names=None, header=0, names=None, index_col=None,
                  usecols=None, squeeze=False, dtype=None, true_values=None, false_values=None, skiprows=0, nrows=0,
                  na_values=None, verbose=False, parse_dates=False, date_parser=None, thousands=None, comment=None,
-                 skipfooter=0, convert_float=True, mangle_dupe_cols=True):
+                 skipfooter=0, convert_float=True, mangle_dupe_cols=True, **kwargs):
         super().__init__(file_path=file_path, flag_read_only=flag_read_only, sheet_names=sheet_names, header=header,
                          names=names, index_col=index_col, usecols=usecols, squeeze=squeeze, dtype=dtype,
                          true_values=true_values, false_values=false_values, skiprows=skiprows, nrows=nrows,
                          na_values=na_values, verbose=verbose, parse_dates=parse_dates, date_parser=date_parser,
                          thousands=thousands, comment=comment, skipfooter=skipfooter, convert_float=convert_float,
-                         mangle_dupe_cols=mangle_dupe_cols)
+                         mangle_dupe_cols=mangle_dupe_cols, **kwargs)
 
     def parse(self):
         if self.streams:
@@ -368,11 +369,11 @@ class XLRDReader(FileHandler):
                         self.__xlrd_sheet(sheet=xls_ws, handler=handler, buffer=buffer)
                     else:
                         sheets[tab] = self.__xlrd_sheet(sheet=xls_ws, handler=handler, buffer=buffer)
-
-            if sheets:
-                return sheets
         finally:
             self.__xls_file.close()
+
+        if sheets:
+            return sheets
 
     def __xlrd_sheet(self, sheet, handler=None, buffer=None):
         data: List[List[Scalar]] = []
@@ -445,13 +446,13 @@ class PYXLSBReader(FileHandler):
     def __init__(self, file_path, flag_read_only=False, sheet_names=None, header=0, names=None, index_col=None,
                  usecols=None, squeeze=False, dtype=None, true_values=None, false_values=None, skiprows=0, nrows=0,
                  na_values=None, verbose=False, parse_dates=False, date_parser=None, thousands=None, comment=None,
-                 skipfooter=0, convert_float=True, mangle_dupe_cols=True):
+                 skipfooter=0, convert_float=True, mangle_dupe_cols=True, **kwargs):
         super().__init__(file_path=file_path, flag_read_only=flag_read_only, sheet_names=sheet_names, header=header,
                          names=names, index_col=index_col, usecols=usecols, squeeze=squeeze, dtype=dtype,
                          true_values=true_values, false_values=false_values, skiprows=skiprows, nrows=nrows,
                          na_values=na_values, verbose=verbose, parse_dates=parse_dates, date_parser=date_parser,
                          thousands=thousands, comment=comment, skipfooter=skipfooter, convert_float=convert_float,
-                         mangle_dupe_cols=mangle_dupe_cols)
+                         mangle_dupe_cols=mangle_dupe_cols, **kwargs)
 
     def parse(self):
         if self.streams:
@@ -475,11 +476,11 @@ class PYXLSBReader(FileHandler):
                         self.__pyxlsb_sheet(sheet=xls_ws, handler=handler, buffer=buffer)
                     else:
                         sheets[tab] = self.__pyxlsb_sheet(sheet=xls_ws, handler=handler, buffer=buffer)
-
-            if sheets:
-                return sheets
         finally:
             self.__xls_file.close()
+
+        if sheets:
+            return sheets
 
     def __pyxlsb_sheet(self, sheet, handler, buffer):
         data: List[List[Scalar]] = []

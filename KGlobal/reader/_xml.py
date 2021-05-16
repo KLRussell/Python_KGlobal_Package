@@ -1,4 +1,4 @@
-from ..filehandler import FileHandler, is_an_xml, unique_id
+from ..filehandler import FileHandler
 from xml.etree.ElementTree import parse as xml_parse
 from pandas import DataFrame
 from os.path import exists, join
@@ -19,6 +19,8 @@ class XMLReader(FileHandler):
             return self.__parse()
 
     def __parse(self, handler=None, buffer=None):
+        from ..filehandler import is_an_xml
+
         if is_an_xml(self.file_path):
             tree = xml_parse(self.file_path)
             root = tree.getroot()
@@ -98,6 +100,8 @@ class XMLWriter(FileHandler):
             xmlfile.write('\n</records>')
 
     def __xml_file(self):
+        from ..filehandler import unique_id
+
         xml_file = join(self.file_dir, self.file_name)
         date = datetime.now()
 

@@ -1,3 +1,4 @@
+from ..filehandler import FileHandler
 from json import loads
 from portalocker import Lock
 from pandas import DataFrame

@@ -5,6 +5,7 @@ from django.utils.crypto import get_random_string
 from pandas.core.dtypes.common import is_list_like
 from pandas.io.parsers import TextParser
 from pandas.errors import EmptyDataError
+from portalocker.utils import DEFAULT_TIMEOUT, DEFAULT_CHECK_INTERVAL, DEFAULT_FAIL_WHEN_LOCKED, LOCK_METHOD
 from typing import Mapping, Any
 
 
@@ -21,52 +22,52 @@ class Streams(object):
     __slots__ = "streams"
 
     def __init__(self):
-        self.streams = list()
+        self.streams = dict()
 
     def add_stream(self, engine, handler, buffer):
         assert engine in self.__engines, f"Engine {engine} not recognized"
 
         if engine not in self.__streams.keys():
-            self.__streams[engine] = list()
+            self.streams[engine] = list()
 
-        self.__streams[engine].append([handler, buffer])
+        self.streams[engine].append([handler, buffer])
 
     def keys(self):
-        return list(self.__streams.keys())
+        return list(self.streams.keys())
 
     def items(self):
-        return self.__streams.items()
+        return self.streams.items()
 
     def __getitem__(self, key):
-        if isinstance(key, str) and key in self.__streams.keys():
-            return self.__streams[key]
+        if isinstance(key, str) and key in self.streams.keys():
+            return self.streams[key]
         else:
             return list()
 
     def __setitem__(self, key, value):
         if isinstance(key, str):
-            self.__streams[key] = value
+            self.streams[key] = value
 
     def __delitem__(self, key):
-        if isinstance(key, str) and key in self.__streams.keys():
-            del self.__streams[key]
+        if isinstance(key, str) and key in self.streams.keys():
+            del self.streams[key]
 
     def __contains__(self, key):
         if isinstance(key, str):
-            return key in self.__streams.keys()
+            return key in self.streams.keys()
 
     def __iter__(self):
-        for k in self.__streams.keys():
+        for k in self.streams.keys():
             yield k
 
     def __len__(self):
-        return len(self.__streams)
+        return len(self.streams)
 
     def __repr__(self):
-        return self.__class__.__name__ + repr(str(self.__streams))
+        return self.__class__.__name__ + repr(str(self.streams))
 
     def __str__(self):
-        return str(self.__streams)
+        return str(self.streams)
 
     def __eq__(self, other):
         for k in self.__slots__:
@@ -134,8 +135,8 @@ class FileHandler(object):
     @file_path.setter
     def file_path(self, file_path):
         if file_path:
-            if not exists(filepath):
-                raise ValueError("'filepath' %r does not exist" % filepath)
+            if not exists(file_path):
+                raise ValueError("'file_path' %r does not exist" % file_path)
 
             self.__file_path = file_path
         else:
@@ -226,6 +227,9 @@ class FileHandler(object):
 
     def convert_data(self, data):
         if data:
+            if self.nrows == 0:
+                self.nrows = None
+
             if is_list_like(self.index_col):
                 if self.header is None:
                     offset = 0
@@ -282,6 +286,7 @@ class FileParser(object):
     from .reader._csv import CSVReader
     from .reader._json import JSONReader
 
+    DEFAULTBUFFER = 1000
     __streams = Streams()
     __reader = None
     __engines: Mapping[str, Any] = {
@@ -307,9 +312,6 @@ class FileParser(object):
                 assert engine_or_reader in self.__engines, f"Engine {engine_or_reader} not recognized"
                 engine_or_reader = self.__engines[engine_or_reader]
 
-            if not isinstance(engine_or_reader, Mapping):
-                raise ValueError(f"Unknown engine: {engine_or_reader}")
-
             self.__reader = engine_or_reader
         else:
             self.__reader = None
@@ -322,9 +324,10 @@ class FileParser(object):
         return registerhandler
 
     def parse_excel(self, file_path, flag_read_only=False, sheet_names=None, header=0, names=None, index_col=None,
-                    usecols=None, squeeze=False, dtype=None, engine=None, true_values=None, false_values=None,
-                    skiprows=0, nrows=0, na_values=None, verbose=False, parse_dates=False, date_parser=None,
-                    thousands=None, comment=None, skipfooter=0, convert_float=True, mangle_dupe_cols=True):
+                    usecols=None, squeeze=False, converters=None, dtype=None, engine=None, true_values=None,
+                    false_values=None, skiprows=0, nrows=0, na_values=None, keep_default_na=True, na_filter=True,
+                    verbose=False, parse_dates=False, date_parser=None, thousands=None, comment=None, skipfooter=0,
+                    convert_float=True, mangle_dupe_cols=True):
 
         obj = ExcelFile(file_path, engine)
         self.reader = self.__engines[obj.engine](file_path=file_path, flag_read_only=flag_read_only,
@@ -334,14 +337,15 @@ class FileParser(object):
                                                  nrows=nrows, na_values=na_values, verbose=verbose,
                                                  parse_dates=parse_dates, date_parser=date_parser, thousands=thousands,
                                                  comment=comment, skipfooter=skipfooter, convert_float=convert_float,
-                                                 mangle_dupe_cols=mangle_dupe_cols)
+                                                 mangle_dupe_cols=mangle_dupe_cols, converters=converters,
+                                                 keep_default_na=keep_default_na, na_filter=na_filter)
         self.reader.stream = self.__streams[obj.engine] + self.__streams['default']
-        self.reader.parse()
+        return self.reader.parse()
 
     def parse_xml(self, file_path, xmlns_rs, dict_var=None):
         self.reader = self.__engines['xmlread'](file_path=file_path, xmlns_rs=xmlns_rs, dict_var=dict_var)
         self.reader.stream = self.__streams['xmlread'] + self.__streams['default']
-        self.reader.parse()
+        return self.reader.parse()
 
     def write_xml(self, file_dir, file_name, df):
         self.reader = self.__engines['xmlwriter'](file_dir=file_dir, file_name=file_name, df=df)
@@ -353,17 +357,17 @@ class FileParser(object):
                                              check_interval=check_interval, fail_when_locked=fail_when_locked,
                                              flags=flags, **file_open_kwargs)
         self.reader.stream = self.__streams['open'] + self.__streams['default']
-        self.reader.parse()
+        return self.reader.parse()
 
     def parse_csv(self, file_path, dialect=None, **fmtparams):
         self.reader = self.__engines['csv'](file_path=file_path, dialect=dialect, **fmtparams)
         self.reader.stream = self.__streams['csv'] + self.__streams['default']
-        self.reader.parse()
+        return self.reader.parse()
 
     def parse_json(self, file_path):
         self.reader = self.__engines['json'](file_path=file_path)
         self.reader.stream = self.__streams['json'] + self.__streams['default']
-        self.reader.parse()
+        return self.reader.parse()
 
 
 def is_an_xml(xml_file):

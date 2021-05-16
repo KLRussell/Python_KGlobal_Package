@@ -1,3 +1,4 @@
+from ..filehandler import FileHandler
 from csv import reader
 from portalocker import Lock
 from pandas import DataFrame
