@@ -18,14 +18,19 @@ class JSONReader(FileHandler):
     def __parse(self, handler=None, buffer=None):
         data = list()
         row_num = 0
+        header = None
 
         with Lock(filename=self.file_path, mode='r') as read_obj:
             for line in read_obj:
                 data.append(loads(line))
 
+                if not header:
+                    header = converted_row
+
                 if handler and buffer <= len(data):
                     handler(data, row_num - len(data) + 1, row_num)
                     data.clear()
+                    data.append(header)
 
                 row_num += 1
 

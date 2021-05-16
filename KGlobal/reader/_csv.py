@@ -18,6 +18,7 @@ class CSVReader(FileHandler):
     def __parse(self, handler=None, buffer=None):
         data = list()
         row_num = 0
+        header = None
 
         with Lock(filename=self.file_path, mode='r') as read_obj:
             csv_reader = reader(read_obj, self.dialect, **self.kwargs)
@@ -25,10 +26,14 @@ class CSVReader(FileHandler):
             for line in csv_reader:
                 data.append(line)
 
+                if not header:
+                    header = converted_row
+
                 if handler and buffer <= len(data):
                     df = self.__to_df(data)
                     handler(df, row_num - len(df) + 1, row_num)
                     data.clear()
+                    data.append(header)
 
                 row_num += 1
 

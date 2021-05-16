@@ -21,15 +21,20 @@ class OpenReader(FileHandler):
     def __parse(self, handler, buffer):
         data = list()
         row_num = 0
+        header = None
 
         with Lock(filename=self.file_path, mode=self.mode, timeout=self.timeout, check_interval=self.check_interval,
                   fail_when_locked=self.fail_when_locked, flags=self.flags, **self.kwargs) as lines:
             for line in lines:
                 data.append(line)
 
+                if not header:
+                    header = converted_row
+
                 if buffer <= len(data):
                     handler(data, row_num - len(data) + 1, row_num)
                     data.clear()
+                    data.append(header)
 
                 row_num += 1
 

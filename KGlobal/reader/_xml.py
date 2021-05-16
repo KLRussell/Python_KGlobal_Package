@@ -38,13 +38,18 @@ class XMLReader(FileHandler):
     def __parse_xml_root(xml_objs, handler=None, buffer=None):
         xml_dicts = list()
         row_num = 0
+        header = None
 
         for xml_obj in xml_objs:
             xml_dicts.append(self.__parse_element(xml_obj))
 
+            if not header:
+                header = converted_row
+
             if handler and buffer <= len(xml_dicts):
                 handler(self.__parse_df(xml_dicts), row_num - len(xml_dicts) + 1)
                 xml_dicts.clear()
+                xml_dicts.append(header)
 
             row_num += 1
 
