@@ -17,7 +17,7 @@ class NotFunctionError(Exception):
 
 
 class Streams(object):
-    __engines = ['xmlread', 'xmlwrite', 'csv', 'open', 'xlrd', 'openpyxl', 'odf', 'pyxlsb']
+    __engines = ['xmlread', 'xmlwrite', 'csv', 'open', 'xlrd', 'openpyxl', 'odf', 'pyxlsb', 'default']
 
     __slots__ = "streams"
 
@@ -27,7 +27,7 @@ class Streams(object):
     def add_stream(self, engine, handler, buffer):
         assert engine in self.__engines, f"Engine {engine} not recognized"
 
-        if engine not in self.__streams.keys():
+        if engine not in self.streams.keys():
             self.streams[engine] = list()
 
         self.streams[engine].append([handler, buffer])
@@ -228,7 +228,9 @@ class FileHandler(object):
     def convert_data(self, data):
         if data:
             if self.nrows == 0:
-                self.nrows = None
+                nrows = None
+            else:
+                nrows = self.nrows
 
             if is_list_like(self.index_col):
                 if self.header is None:
@@ -258,7 +260,7 @@ class FileHandler(object):
                     true_values=self.true_values,
                     false_values=self.false_values,
                     skiprows=None,
-                    nrows=self.nrows,
+                    nrows=nrows,
                     na_values=self.na_values,
                     parse_dates=self.parse_dates,
                     date_parser=self.date_parser,
@@ -270,7 +272,7 @@ class FileHandler(object):
                     **self.kwargs,
                 )
 
-                df = parser.read(nrows=self.nrows)
+                df = parser.read(nrows=nrows)
             except EmptyDataError:
                 df = DataFrame()
 
@@ -339,12 +341,12 @@ class FileParser(object):
                                                  comment=comment, skipfooter=skipfooter, convert_float=convert_float,
                                                  mangle_dupe_cols=mangle_dupe_cols, converters=converters,
                                                  keep_default_na=keep_default_na, na_filter=na_filter)
-        self.reader.stream = self.__streams[obj.engine] + self.__streams['default']
+        self.reader.streams = self.__streams[obj.engine] + self.__streams['default']
         return self.reader.parse()
 
     def parse_xml(self, file_path, xmlns_rs, dict_var=None):
         self.reader = self.__engines['xmlread'](file_path=file_path, xmlns_rs=xmlns_rs, dict_var=dict_var)
-        self.reader.stream = self.__streams['xmlread'] + self.__streams['default']
+        self.reader.streams = self.__streams['xmlread'] + self.__streams['default']
         return self.reader.parse()
 
     def write_xml(self, file_dir, file_name, df):
@@ -356,17 +358,17 @@ class FileParser(object):
         self.reader = self.__engines['open'](file_path=file_path, mode=mode, timeout=timeout,
                                              check_interval=check_interval, fail_when_locked=fail_when_locked,
                                              flags=flags, **file_open_kwargs)
-        self.reader.stream = self.__streams['open'] + self.__streams['default']
+        self.reader.streams = self.__streams['open'] + self.__streams['default']
         return self.reader.parse()
 
     def parse_csv(self, file_path, dialect=None, **fmtparams):
         self.reader = self.__engines['csv'](file_path=file_path, dialect=dialect, **fmtparams)
-        self.reader.stream = self.__streams['csv'] + self.__streams['default']
+        self.reader.streams = self.__streams['csv'] + self.__streams['default']
         return self.reader.parse()
 
     def parse_json(self, file_path):
         self.reader = self.__engines['json'](file_path=file_path)
-        self.reader.stream = self.__streams['json'] + self.__streams['default']
+        self.reader.streams = self.__streams['json'] + self.__streams['default']
         return self.reader.parse()
 
 

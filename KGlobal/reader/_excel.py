@@ -63,6 +63,7 @@ class OpenPYXLReader(FileHandler):
         data: List[List[Scalar]] = []
         row_number = 0
         last_row_with_data = -1
+        header = None
 
         for row in sheet.rows:
             if 0 <= self.skiprows <= row_number and 0 <= self.header <= row_number and (row_number <= self.nrows
@@ -70,14 +71,18 @@ class OpenPYXLReader(FileHandler):
                 converted_row = [self.__convert_cell(cell, self.convert_float) for cell in row]
                 data.append(converted_row)
 
+                if not header:
+                    header = converted_row
+
                 if not all(cell == "" for cell in converted_row):
                     last_row_with_data = len(data)
 
                 if handler and buffer <= len(data):
                     data = self.__read_only_fix(data, version, is_readonly)
                     df = self.convert_data(data)
-                    handler(df, row_number - len(df), row_number)
+                    handler(df, row_number - len(df) + 1, row_number)
                     data.clear()
+                    data.append(header)
                     last_row_with_data = -1
 
             row_number += 1
@@ -87,7 +92,7 @@ class OpenPYXLReader(FileHandler):
         df = self.convert_data(data)
 
         if not df.empty and handler:
-            handler(df, row_number - len(df), row_number)
+            handler(df, row_number - len(df) + 1, row_number)
         elif handler is None:
             return df
 
@@ -184,6 +189,7 @@ class ODFReader(FileHandler):
         cell_names = {covered_cell_name, table_cell_name}
 
         sheet_rows = sheet.getElementsByType(TableRow)
+        header = None
         empty_rows = 0
         max_row_len = 0
         row_number = 0
@@ -226,11 +232,15 @@ class ODFReader(FileHandler):
                     for _ in range(row_repeat):
                         table.append(table_row)
 
+                if not header:
+                    header = converted_row
+
                 if handler and buffer <= len(table):
                     table = self.__fix_table(table)
                     df = self.convert_data(table)
                     handler(df, row_number - len(df) + 1, row_number)
                     table.clear()
+                    table.append(header)
 
             row_number += 1
 
@@ -378,6 +388,7 @@ class XLRDReader(FileHandler):
     def __xlrd_sheet(self, sheet, handler=None, buffer=None):
         data: List[List[Scalar]] = []
         row_number = 0
+        header = None
 
         for i in range(sheet.nrows):
             if 0 < self.skiprows <= row_number <= self.nrows and 0 < self.header <= row_number:
@@ -387,10 +398,14 @@ class XLRDReader(FileHandler):
                 ]
                 data.append(row)
 
+                if not header:
+                    header = converted_row
+
                 if handler and len(data) <= buffer:
                     df = self.convert_data(data)
                     handler(df, row_number - len(df) + 1, row_number)
                     data.clear()
+                    data.append(header)
 
             row_number += 1
 
@@ -485,16 +500,21 @@ class PYXLSBReader(FileHandler):
     def __pyxlsb_sheet(self, sheet, handler, buffer):
         data: List[List[Scalar]] = []
         row_number = 0
+        header = None
 
         for r in sheet.rows(sparse=False):
             if 0 < self.skiprows <= row_number <= self.nrows and 0 < self.header <= row_number:
                 row = [self.__convert_cell(c) for c in r]
                 data.append(row)
 
+                if not header:
+                    header = converted_row
+
                 if handler and buffer <= len(data):
                     df = self.convert_data(data)
                     handler(df, row_number - len(df) + 1, row_number)
                     data.clear()
+                    data.append(header)
 
             row_number += 1
 
