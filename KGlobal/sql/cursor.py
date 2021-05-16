@@ -5,6 +5,8 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 from pyodbc import Error as PYODBCError
 from pandas import DataFrame
+from csv import writer as csv_writer
+from types import FunctionType, BuiltinFunctionType, MethodType, BuiltinMethodType
 
 import logging
 import os
@@ -123,7 +125,12 @@ class SQLCursor(Thread):
                 if 'execute' not in params.keys():
                     params['execute'] = None
 
-                self.execute(query_str=params['query_str'], execute=params['execute'])
+                if 'handlers' in params.keys():
+                    for handler, buffer, csv_path, delimiter, quotechar in params['handlers']:
+                        self.execute(query_str=params['query_str'], execute=params['execute'], handler=handler,
+                                     buffer=buffer, csv_path=csv_path, delimiter=delimiter, quotechar=quotechar)
+                else:
+                    self.execute(query_str=params['query_str'], execute=params['execute'])
             elif function == 'tables':
                 self.tables()
             elif function is not None:
@@ -254,14 +261,42 @@ class SQLCursor(Thread):
         else:
             raise Exception("Cursor is closed. Cannot pull tables")
 
-    def execute(self, query_str, execute=False):
+    def execute(self, query_str, execute=False, handler=None, buffer=1000, csv_path=None, delimiter=',', quotechar='"'):
         """
         Requests sql connection to execute or query a sql query string. Execution of TSQL queries will follow
         commit and rollback commands when necessary. Results are appended to the results and/or errors attributes
 
         :param query_str: SQL query string
         :param execute: (Optional) [True/False] Default is False
+        :param handler: (Optional) Function or Class Function handler
+        :param buffer: (Optional) [handler only] Number of lines per chunk to store in dataframe
+        :param csv_path: (Optional) [handler only] File path where data is stored at for csv file
+        :param delimiter: (Optional) [handler only] Data seperator to delimit columns
+        :param quotechar: (Optional) [handler only] Quote Character to wrap values with
         """
+
+        if handler:
+            if not isinstance(handler, (FunctionType, BuiltinFunctionType, MethodType, BuiltinMethodType)):
+                raise ValueError("'handler' %r is not a function" % handler)
+            if not isinstance(buffer, int):
+                raise eError("'buffer' %r is not a int" % buffer)
+            if not isinstance(csv_path, (str, None)):
+                raise ValueError("'csv_path' %r is not a str" % csv_path)
+            if not isinstance(delimiter, str):
+                raise ValueError("'delimiter' %r is not a str" % delimiter)
+            if not isinstance(quotechar, str):
+                raise ValueError("'quotechar' %r is not a str" % quotechar)
+
+            buffer = int(buffer)
+
+            if buffer < 1:
+                raise ValueError("'buffer' %r value is zero or negative" % buffer)
+            if csv_path and not os.path.exists(os.path.dirname(csv_path)):
+                raise ValueError("'csv_path' %r is not a valid directory path" % os.path.dirname(csv_path))
+            if csv_path and not csv_path.endswith('.csv'):
+                raise ValueError("'csv_path' %r is does not have a .csv extension" % os.path.basename(csv_path))
+            if csv_path and os.path.exists(csv_path):
+                raise ValueError("'csv_path' %r file exists already" % csv_path)
 
         if self.__cursor:
             if not isinstance(query_str, str):
@@ -274,10 +309,17 @@ class SQLCursor(Thread):
                 with self.__is_pending:
                     self.__execute_results = list()
                     result = self.__cursor.execute(query_str)
-                    self.__store_dataset(result)
+
+                    if handler:
+                        self.__stream_dataset(result, handler, buffer, csv_path, delimiter, quotechar)
+                    else:
+                        self.__store_dataset(result)
 
                     while result.nextset():
-                        self.__store_dataset(result)
+                        if handler:
+                            self.__stream_dataset(result, handler, buffer, csv_path, delimiter, quotechar)
+                        else:
+                            self.__store_dataset(result)
 
                     if execute:
                         self.commit()
@@ -304,6 +346,45 @@ class SQLCursor(Thread):
             self.__execute_results.append(DataFrame(data, columns=cols))
         except:
             pass
+
+    def __stream_dataset(self, dataset, handler, buffer, csv_path, delimiter, quotechar):
+        try:
+            cols = [column[0] for column in dataset.description]
+            buffer_list = list()
+            row_num = 0
+
+            for row in dataset:
+                buffer_list.append(row)
+
+                if buffer >= len(buffer_list):
+                    self.__handle_buffer(row_num, cols, buffer_list, handler, csv_path, delimiter, quotechar)
+                    buffer_list.clear()
+
+                row_num += 1
+
+            self.__handle_buffer(row_num, cols, buffer_list, handler, csv_path, delimiter, quotechar)
+        except:
+            pass
+
+    @staticmethod
+    def __handle_buffer(row_num, cols, buffer_list, handler, csv_path, delimiter, quotechar):
+        if buffer_list:
+            df = DataFrame(buffer_list, columns=cols)
+
+            if csv_path:
+                hreturn = handler(row_num, df)
+
+                if hreturn and isinstance(hreturn, DataFrame):
+                    df = hreturn
+
+                if row_num - len(buffer_list) + 1 == 0:
+                    mode = 'w'
+                else:
+                    mode = 'a'
+
+                df.to_csv(path_or_buf=csv_path, sep=delimiter, quoting=quotechar, mode=mode)
+            else:
+                handler(row_num, df)
 
 
 class EngineCursor(Thread):

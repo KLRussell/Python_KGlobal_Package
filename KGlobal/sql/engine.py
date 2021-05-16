@@ -58,6 +58,7 @@ class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
         self.__conn_max_pool_size = conn_max_pool_size
         self.__engine_lock = Lock()
         self.__cursor_results = list()
+        self.__sql_handlers = list()
         self.__engine_sql_class = None
 
     @property
@@ -129,7 +130,6 @@ class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
                     'timeout': self.__conn_timeout, 'connect_timeout': self.__conn_timeout,
                     'options': '-c statement_timeout=%s' % self.__query_timeout}
             )
-            engine.connect()
 
             @event.listens_for(engine, "engine_connect")
             def ping_connection(connection, branch):
@@ -140,12 +140,18 @@ class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
                     connection.scalar(select([1]))
                 except exc.DBAPIError as err:
                     if err.connection_invalidated:
-                        connection.scalar(select([1]))
+                        try:
+                            connection.scalar(select([1]))
+                        except exc.DBAPIError as err:
+                            raise ValueError('Unable to connect %s' % err)
+                    else:
+                        raise ValueError('Unable to connect %s' % err)
                 else:
-                    close_engine(engine)
-
                     if test_conn:
+                        close_engine(engine)
                         return False
+
+            engine.connect()
         else:
             engine = None
 
@@ -191,6 +197,25 @@ class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
 
             self.__engine_sql_class.queue_sql_engine_to_pool(self)
 
+    def stream_query(self, buffer=1000, csv_path=None, delimiter=',', quotechar='"'):
+        """
+        Event Function
+        Streams sql_execute by chunk for manual transformations and loading or transformations and storing into csv
+
+        :param buffer: Number of lines per chunk to store in dataframe
+        :param csv_path: File path where data is stored at for csv file
+        :param delimiter: Data seperator to delimit columns
+        :param quotechar: Quote Character to wrap values with
+        :var row_num: Variable outputted to event function of row number for buffered dataframe
+        :var dataframe: Variable outputted to event function that is a buffered dataframe
+        """
+
+        def registerhandler(handler):
+            self.__sql_handlers.append([handler, buffer, csv_path, delimiter, quotechar])
+            return handler
+
+        return registerhandler
+
     def sql_execute(self, query_str, execute=False, queue_cursor=False):
         """
         Execute or Query SQL query statement. This command can be multi-threaded in a cursor queue
@@ -208,7 +233,7 @@ class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
             engine = self.connect()
 
             if queue_cursor:
-                params = dict(query_str=query_str, execute=execute)
+                params = dict(query_str=query_str, execute=execute, handlers=self.__sql_handlers)
                 cursor = SQLCursor(engine_type=self.engine_type, engine=engine, engine_class=self, action="execute",
                                    action_params=params)
 
@@ -217,12 +242,25 @@ class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
                     cursor.start()
                 except:
                     cursor.close()
+            elif self.__sql_handlers:
+                for handler, buffer, csv_path, delimiter, quotechar in self.__sql_handlers:
+                    cursor = SQLCursor(engine_type=self.engine_type, engine=engine)
+
+                    try:
+                        cursor.start()
+                        cursor.execute(query_str=query_str, execute=execute, handler=handler, buffer=buffer,
+                                       csv_path=csv_path, delimiter=delimiter, quotechar=quotechar)
+                        cursor.join()
+                    except:
+                        cursor.close()
+                    else:
+                        return cursor
             else:
                 cursor = SQLCursor(engine_type=self.engine_type, engine=engine)
 
                 try:
                     cursor.start()
-                    cursor.execute(query_str, execute)
+                    cursor.execute(query_str=query_str, execute=execute)
                     cursor.join()
                 except:
                     cursor.close()

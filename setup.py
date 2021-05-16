@@ -4,12 +4,12 @@ from setuptools import setup
 if __name__ == '__main__':
     setup(
         name='KGlobal',
-        version='1.6.1.4',
+        version='1.6.2.8',
         author='Kevin Russell',
-        packages=['KGlobal', 'KGlobal.data', 'KGlobal.sql'],
+        packages=['KGlobal', 'KGlobal.data', 'KGlobal.sql', 'KGlobal.reader'],
         # py_modules=['KGlobal'],
         url='https://github.com/KLRussell/Python_KGlobal_Package',
-        description='SQL Handling, Object Shelving, Data Encryption, XML Parsing/Writing, E-mail Parsing, Logging',
+        description='SQL Handling, Object Shelving, Data Encryption, ETL File Handler, E-mail Parsing, Logging',
         install_requires=[
             'pandas',
             'future',
@@ -24,7 +24,11 @@ if __name__ == '__main__':
             'xlrd',
             'XlsxWriter',
             'Xlwt',
-            'Openpyxl'
+            'Openpyxl',
+            'django',
+            'openpyxl',
+            'odfpy',
+            'pyxlsb'
         ],
         package_data={
             "": ["*.txt", "*.md"],

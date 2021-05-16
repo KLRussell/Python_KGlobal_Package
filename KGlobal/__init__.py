@@ -1,10 +1,10 @@
 from __future__ import unicode_literals
 
 from .credentials import Credentials
-from .xml import XML
 from .exchangelib import ExchangeToMsg
 from .toolbox import Toolbox
 from .setup_gui import CredentialsGUI, EmailGUI, SQLServerGUI
+from .filehandler import FileParser
 
 import os
 import pkg_resources
@@ -12,15 +12,15 @@ import sys
 
 __package_name__ = 'KGlobal'
 __author__ = 'Kevin Russell'
-__version__ = "1.6.1.4"
-__description__ = '''File, encryption, SQL, XML, and etc...'''
+__version__ = "1.6.2.8"
+__description__ = '''File, encryption, SQL, File Handler, and etc...'''
 __url__ = 'https://github.com/KLRussell/Python_KGlobal_Package'
 
 __all__ = [
     "Toolbox",
     "Credentials",
     "ExchangeToMsg",
-    "XML",
+    "FileParser",
     "CredentialsGUI",
     "EmailGUI",
     "SQLServerGUI",

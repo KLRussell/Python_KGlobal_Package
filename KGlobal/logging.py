@@ -60,7 +60,7 @@ class LogHandle(object):
         if not isinstance(file_dir, (str, type(None))):
             raise Exception("'file_dir' is missing")
         if file_dir and not os.path.exists(file_dir):
-            raise Exception("'file_dir' does not exist")
+            os.makedirs(file_dir)
 
         self.__file_dir = file_dir
 
@@ -92,6 +92,12 @@ class LogHandle(object):
         while True:
             args = self.__read_pipe.recv()
 
+            while isinstance(args, list) and not args[0]:
+                args.remove(args[0])
+
+            if isinstance(args, list) and len(args) == 1 and isinstance(args[0], list):
+                args = args[0]
+
             if isinstance(args, dict) and 'command' in args.keys():
                 command = args['command']
                 del args['command']
@@ -102,7 +108,6 @@ class LogHandle(object):
                     self.__write_to_log(**args)
             elif isinstance(args, list) and len(args) > 1:
                 command = args[0]
-                args.remove(args[0])
 
                 if command == 'gui_console':
                     self.__gui_console_set(*args)

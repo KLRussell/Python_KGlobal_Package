@@ -163,7 +163,7 @@ class BaseDataConfig(collections.abc.MutableMapping):
 
         self.sync()
 
-    def sync(self):
+    def sync(self, no_resync=False):
         """
         Syncs class dict to .db file by reading the .db file & appending changes, adds,
          and deletes in current list to .db list. Keep in mind that this will sync and not
@@ -179,17 +179,28 @@ class BaseDataConfig(collections.abc.MutableMapping):
                 from .cryptography import CryptHandle
             except ImportError:
                 return
+            finally:
+                resync = False
 
             with self.__action_lock:
-                self.__sync_db()
-                self.__package_config()
+                try:
+                    self.__sync_db()
+                    self.__package_config()
 
-                if self.__buffer_write:
-                    file_write_bytes(self.__config_tmp_fp, self.__buffer_write)
-                    file_move(self.__config_tmp_fp, self.__config_fp, True)
-                    self.__buffer_write = None
-                else:
-                    file_delete(self.__config_fp)
+                    if self.__buffer_write:
+                        file_write_bytes(self.__config_tmp_fp, self.__buffer_write)
+                        self.__buffer_write = None
+                    else:
+                        file_delete(self.__config_fp)
+                except Exception as e:
+                    log.warning("Ran into Ecode '{0}', {1}. Re-syncing config".format(type(e).__name__, str(e)))
+                    resync = True
+                finally:
+                    if os.path.exists(self.__config_tmp_fp):
+                        file_move(self.__config_tmp_fp, self.__config_fp, True)
+
+            if not no_resync and resync:
+                self.sync(True)
 
     def clear(self):
         """
@@ -586,7 +597,6 @@ def file_delete(file_path):
             os.remove(file_path)
         except OSError as e:
             print("Error Code '{0}', {1}".format(type(e).__name__, str(e)))
-
             pass
 
 
@@ -608,7 +618,11 @@ def file_move(from_file_path, to_file_path, migrate=False):
     if not os.path.exists(os.path.dirname(to_file_path)):
         raise ValueError("'to_file_path' directory cannot be found in file system")
 
-    copy2(from_file_path, to_file_path)
+    try:
+        copy2(from_file_path, to_file_path)
+    except OSError as e:
+        print("Error Code '{0}', {1}".format(type(e).__name__, str(e)))
+        pass
 
     if migrate:
         file_delete(from_file_path)
