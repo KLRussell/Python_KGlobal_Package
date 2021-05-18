@@ -40,6 +40,7 @@ class CSVReader(FileHandler):
         df = self.__to_df(data)
 
         if not df.empty and handler:
+            row_num -= 1
             handler(df, row_num - len(df) + 1, row_num)
         elif not handler:
             return df

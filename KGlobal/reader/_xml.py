@@ -54,6 +54,7 @@ class XMLReader(FileHandler):
             row_num += 1
 
         if handler:
+            row_num -= 1
             handler(self.__parse_df(xml_dicts), row_num - len(xml_dicts) + 1)
         else:
             return self.__parse_df(xml_dicts)

@@ -35,6 +35,7 @@ class JSONReader(FileHandler):
                 row_num += 1
 
         if data and handler:
+            row_num -= 1
             handler(data, row_num - len(data) + 1, row_num)
         elif not handler:
             return data

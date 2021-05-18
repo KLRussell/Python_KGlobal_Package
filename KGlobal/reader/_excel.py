@@ -77,7 +77,7 @@ class OpenPYXLReader(FileHandler):
                 if not all(cell == "" for cell in converted_row):
                     last_row_with_data = len(data)
 
-                if handler and buffer <= len(data):
+                if handler and buffer < len(data):
                     data = self.__read_only_fix(data, version, is_readonly)
                     df = self.convert_data(data)
                     handler(df, row_number - len(df) + 1, row_number)
@@ -92,6 +92,7 @@ class OpenPYXLReader(FileHandler):
         df = self.convert_data(data)
 
         if not df.empty and handler:
+            row_number -= 1
             handler(df, row_number - len(df) + 1, row_number)
         elif handler is None:
             return df
@@ -235,7 +236,7 @@ class ODFReader(FileHandler):
                 if not header:
                     header = converted_row
 
-                if handler and buffer <= len(table):
+                if handler and buffer < len(table):
                     table = self.__fix_table(table)
                     df = self.convert_data(table)
                     handler(df, row_number - len(df) + 1, row_number)
@@ -248,6 +249,7 @@ class ODFReader(FileHandler):
         df = self.convert_data(table)
 
         if not df.empty and handler:
+            row_number -= 1
             handler(df, row_number - len(df) + 1, row_number)
         elif not handler:
             return df
@@ -412,6 +414,7 @@ class XLRDReader(FileHandler):
         df = self.convert_data(data)
 
         if not df.empty and handler:
+            row_number -= 1
             handler(df, row_number - len(df) + 1, row_number)
         elif not handler:
             return df
@@ -510,7 +513,7 @@ class PYXLSBReader(FileHandler):
                 if not header:
                     header = converted_row
 
-                if handler and buffer <= len(data):
+                if handler and buffer < len(data):
                     df = self.convert_data(data)
                     handler(df, row_number - len(df) + 1, row_number)
                     data.clear()
@@ -521,6 +524,7 @@ class PYXLSBReader(FileHandler):
         df = self.convert_data(data)
 
         if not df.empty and handler:
+            row_number -= 1
             handler(df, row_number - len(df) + 1, row_number)
         elif not handler:
             return df

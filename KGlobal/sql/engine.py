@@ -8,6 +8,8 @@ from sqlalchemy import create_engine, exc, event, select
 from sqlalchemy.engine import Engine
 from pyodbc import Connection as Engine2, connect as create_engine2, Error, SQL_MAX_CONCURRENT_ACTIVITIES
 from future.moves.queue import LifoQueue, Empty
+from traceback import format_exc
+from csv import QUOTE_ALL
 
 import os
 import logging
@@ -21,11 +23,11 @@ class BaseSQLEngineClass(object):
 
 class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
     """
-    Defined SQL Engine class for connecting to SQL, executing commands, querying, uploading dataframes, and Transact
-    commands (ie rollback, commit, and etc...)
+        Defined SQL Engine class for connecting to SQL, executing commands, querying, uploading dataframes, and Transact
+        commands (ie rollback, commit, and etc...)
 
-    This is snapped out of a SQL engine queue and can be re-added to queue when not needed.
-    """
+        This is snapped out of a SQL engine queue and can be re-added to queue when not needed.
+        """
 
     CONN_DEFAULT_TIMEOUT = 3
     QUERY_DEFAULT_TIMEOUT = 0
@@ -60,6 +62,17 @@ class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
         self.__cursor_results = list()
         self.__sql_handlers = list()
         self.__engine_sql_class = None
+        self.__main_engine = None
+        self.__main_spid = None
+
+    @property
+    def engine_spid(self):
+        self.__main_engine, self.__main_spid = self.__validate_engine(self.__main_engine)
+
+        if not self.__main_engine:
+            self.__main_engine, self.__main_spid = self.connect()
+
+        return [self.__main_engine, self.__main_spid]
 
     @property
     def cursors(self):
@@ -180,7 +193,7 @@ class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
                 raise ValueError("'engine' %r is not an Engine instance of PYODBC Connection" % engine)
 
             log.debug('SQL connection (%s): Created engine %s', str(self.__sql_config), self.engine_id)
-            return engine
+            return self.__validate_engine(engine)
 
     def restore_to_pool(self, close_cursors=False):
         """
@@ -193,25 +206,28 @@ class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
 
         if self.__engine_sql_class and isinstance(self.__engine_sql_class, SQLQueue):
             if close_cursors:
-                self.__release_coms()
+                self.__release_coms(kill_main_engine=True)
 
             self.__engine_sql_class.queue_sql_engine_to_pool(self)
 
-    def stream_query(self, buffer=1000, csv_path=None, delimiter=',', quotechar='"'):
+    def stream_execute(self, buffer=1000, csv_path=None, csv_replace=False, delimiter=',', quotechar='"',
+                       quoting=QUOTE_ALL):
         """
         Event Function
         Streams sql_execute by chunk for manual transformations and loading or transformations and storing into csv
 
         :param buffer: Number of lines per chunk to store in dataframe
         :param csv_path: File path where data is stored at for csv file
+        :param csv_replace: (Optional) [True/False] Replace csv file if exists
         :param delimiter: Data seperator to delimit columns
         :param quotechar: Quote Character to wrap values with
+        :param quoting: csv quote mode
         :var row_num: Variable outputted to event function of row number for buffered dataframe
         :var dataframe: Variable outputted to event function that is a buffered dataframe
         """
 
         def registerhandler(handler):
-            self.__sql_handlers.append([handler, buffer, csv_path, delimiter, quotechar])
+            self.__sql_handlers.append([handler, buffer, csv_path, csv_replace, delimiter, quotechar, quoting])
             return handler
 
         return registerhandler
@@ -230,12 +246,11 @@ class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
         from ..sql.cursor import SQLCursor
 
         with self.__engine_lock:
-            engine = self.connect()
-
             if queue_cursor:
+                engine, spid = self.connect()
                 params = dict(query_str=query_str, execute=execute, handlers=self.__sql_handlers)
-                cursor = SQLCursor(engine_type=self.engine_type, engine=engine, engine_class=self, action="execute",
-                                   action_params=params)
+                cursor = SQLCursor(engine_type=self.engine_type, engine=engine, spid=spid, engine_class=self,
+                                   action="execute", action_params=params, keep_engine_alive=False)
 
                 try:
                     self.__cursors.put(cursor, block=False)
@@ -243,20 +258,24 @@ class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
                 except:
                     cursor.close()
             elif self.__sql_handlers:
-                for handler, buffer, csv_path, delimiter, quotechar in self.__sql_handlers:
-                    cursor = SQLCursor(engine_type=self.engine_type, engine=engine)
+                for handler, buffer, csv_path, csv_replace, delimiter, quotechar, quoting in self.__sql_handlers:
+                    engine, spid = self.engine_spid
+                    cursor = SQLCursor(engine_type=self.engine_type, engine=engine, spid=spid)
 
                     try:
                         cursor.start()
                         cursor.execute(query_str=query_str, execute=execute, handler=handler, buffer=buffer,
-                                       csv_path=csv_path, delimiter=delimiter, quotechar=quotechar)
+                                       csv_path=csv_path, csv_replace=csv_replace, delimiter=delimiter,
+                                       quotechar=quotechar, quoting=quoting)
                         cursor.join()
-                    except:
+                    except Exception as e:
                         cursor.close()
+                        raise format_exc()
                     else:
                         return cursor
             else:
-                cursor = SQLCursor(engine_type=self.engine_type, engine=engine)
+                engine, spid = self.engine_spid
+                cursor = SQLCursor(engine_type=self.engine_type, engine=engine, spid=spid)
 
                 try:
                     cursor.start()
@@ -264,6 +283,7 @@ class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
                     cursor.join()
                 except:
                     cursor.close()
+                    raise format_exc()
                 else:
                     return cursor
 
@@ -286,13 +306,13 @@ class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
 
         if self.engine_type == 'alchemy':
             with self.__engine_lock:
-                engine = self.connect()
+                engine, spid = self.connect()
 
                 if queue_cursor:
                     params = dict(dataframe=dataframe, table_name=table_name, table_schema=table_schema,
                                   if_exists=if_exists, index=index, index_label=index_label)
-                    cursor = EngineCursor(alch_engine=engine, engine_class=self, action='upload_df',
-                                          action_params=params)
+                    cursor = EngineCursor(alch_engine=engine, spid=spid, engine_class=self, action='upload_df',
+                                          action_params=params, keep_engine_alive=False)
 
                     try:
                         self.__cursors.put(cursor, block=False)
@@ -300,7 +320,8 @@ class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
                     except:
                         cursor.close()
                 else:
-                    cursor = EngineCursor(alch_engine=engine)
+                    engine, spid = self.engine_spid
+                    cursor = EngineCursor(alch_engine=engine, spid=spid)
 
                     try:
                         cursor.start()
@@ -308,6 +329,7 @@ class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
                         cursor.join()
                     except:
                         cursor.close()
+                        raise format_exc()
                     else:
                         return cursor
 
@@ -322,8 +344,8 @@ class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
         from ..sql.cursor import SQLCursor
 
         with self.__engine_lock:
-            engine = self.connect()
-            cursor = SQLCursor(engine_type=self.engine_type, engine=engine)
+            engine, spid = self.engine_spid
+            cursor = SQLCursor(engine_type=self.engine_type, engine=engine, spid=spid)
 
             try:
                 if queue_cursor:
@@ -337,6 +359,7 @@ class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
                     cursor.join()
             except:
                 cursor.close()
+                raise format_exc()
             else:
                 if not queue_cursor and cursor:
                     return cursor
@@ -382,7 +405,7 @@ class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
         if enable_log:
             log.debug('SQL Connection (%s): Releasing SQL engine %s', str(self.__sql_config), self.engine_id)
 
-        self.__release_coms(enable_log=enable_log)
+        self.__release_coms(enable_log=enable_log, kill_main_engine=True)
 
         if destroy_self and self.__engine_sql_class:
             self.__engine_sql_class.remove_engine_from_pool(self)
@@ -405,9 +428,40 @@ class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
         if len(self.__cursors.queue) > 0:
             self.__cursors.queue.remove(cursor)
 
-    def __release_coms(self, enable_log=True):
+    def __validate_engine(self, engine):
+        spid = None
+
+        if engine is not None:
+            if self.engine_type == 'alchemy':
+                raw_engine = engine.raw_connection()
+            else:
+                raw_engine = engine
+
+            cursor = raw_engine.cursor()
+
+            try:
+                dataset = cursor.execute("SELECT @@SPID")
+                spid = [tuple(t) for t in dataset.fetchall()][0]
+            except:
+                engine = None
+                pass
+            finally:
+                try:
+                    cursor.close()
+                except:
+                    pass
+
+        return [engine, spid]
+
+    def __release_coms(self, enable_log=True, kill_main_engine=False):
         if self.__cursors.qsize() > 0:
             with self.__engine_lock:
+                if kill_main_engine:
+                    close_engine(self.__main_engine)
+
+                self.__main_engine = None
+                self.__main_spid = None
+
                 while True:
                     try:
                         self.__cursors.get(block=False).close(write_log=enable_log)
@@ -415,11 +469,11 @@ class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
                         break
 
     def __del__(self):
-        self.__release_coms()
+        self.__release_coms(kill_main_engine=True)
 
     def __getstate__(self):
         # The pool and lock cannot be pickled
-        self.__release_coms()
+        self.__release_coms(kill_main_engine=True)
         state = self.__dict__.copy()
 
         if state and '__cursors' in state.keys():

@@ -158,9 +158,9 @@ class Toolbox(TBoxBase, SQLQueue, LogHandle):
 
     def __init__(self, script_path, logging_dir=None, logging_folder=None, logging_base_name=None, max_pool_size=None,
                  *args, **kwargs):
+        LogHandle.__init__(self)
         TBoxBase.__init__(self, script_path=script_path)
         SQLQueue.__init__(self, max_pool_size=max_pool_size)
-        LogHandle.__init__(self)
 
         file_dir = None
         base_name = None
