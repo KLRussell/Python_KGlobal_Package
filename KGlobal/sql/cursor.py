@@ -278,6 +278,7 @@ class SQLCursor(Thread):
         :param csv_replace: (Optional) [True/False] Replace csv file if exists
         :param delimiter: (Optional) [handler only] Data seperator to delimit columns
         :param quotechar: (Optional) [handler only] Quote Character to wrap values with
+        :param quoting: (Optional) csv quoting variable
         """
 
         if handler:

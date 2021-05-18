@@ -12,7 +12,7 @@ import sys
 
 __package_name__ = 'KGlobal'
 __author__ = 'Kevin Russell'
-__version__ = "1.6.2.8"
+__version__ = "1.6.2.9"
 __description__ = '''File, encryption, SQL, File Handler, and etc...'''
 __url__ = 'https://github.com/KLRussell/Python_KGlobal_Package'
 

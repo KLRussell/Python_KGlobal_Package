@@ -17,7 +17,7 @@ class NotFunctionError(Exception):
 
 
 class Streams(object):
-    __engines = ['xmlread', 'xmlwrite', 'csv', 'open', 'xlrd', 'openpyxl', 'odf', 'pyxlsb', 'default']
+    __engines = ['xmlread', 'csv', 'open', 'xlrd', 'openpyxl', 'odf', 'pyxlsb', 'default']
 
     __slots__ = "streams"
 
@@ -282,6 +282,11 @@ class FileHandler(object):
 
 
 class FileParser(object):
+    """
+    File Parser for xml, csv, open, xlrd, excel, and json files
+    All formats can be streamed by chunks
+    """
+
     from .reader._xml import XMLReader, XMLWriter
     from .reader._open import OpenReader
     from .reader._excel import OpenPYXLReader, ODFReader, XLRDReader, PYXLSBReader
@@ -319,6 +324,16 @@ class FileParser(object):
             self.__reader = None
 
     def stream_data(self, buffer=DEFAULTBUFFER, engine='default'):
+        """
+        Stream data into chunks
+
+        :param buffer: Number of lines per chunk
+        :param engine: [Optional] xmlread, csv, open, xlrd, openpyxl, odf, pyxlsb, or default
+        :var data: Either dataframe or list of data
+        :var row_start: Row number for first row of data
+        :var row_end: Row number for last row of data
+        """
+
         def registerhandler(handler):
             self.__streams.add_stream(engine, handler, buffer)
             return handler
@@ -328,8 +343,43 @@ class FileParser(object):
     def parse_excel(self, file_path, flag_read_only=False, sheet_names=None, header=0, names=None, index_col=None,
                     usecols=None, squeeze=False, converters=None, dtype=None, engine=None, true_values=None,
                     false_values=None, skiprows=0, nrows=0, na_values=None, keep_default_na=True, na_filter=True,
-                    verbose=False, parse_dates=False, date_parser=None, thousands=None, comment=None, skipfooter=0,
+                    verbose=False, parse_dates=False, date_parser=None, thousands=None, comment=None,
                     convert_float=True, mangle_dupe_cols=True):
+
+        """
+        Parses excel files into a dataframe or stream
+
+        :param file_path: File path to the file being read
+        :param flag_read_only: [Optional] (True/False) Creates an error if file is opened in read-only mode
+        :param sheet_names: List of sheet names to read
+        :param header: Row number that is the header (All preceding rows will be truncated)
+        :param names: List of column names to use
+        :param index_col: Column(s) to index
+        :param usecols: Columns to parse (i.e "A:E")
+        :param squeeze: Fit data into a Series if one column
+        :param converters: Dict of functions for converting values in certain columns
+        :param dtype: Set data types for specific columns
+        :param engine: Excel engine to use
+        :param true_values: Values to consider as True
+        :param false_values: Values to consider as False
+        :param skiprows: Rows to skip
+        :param nrows: Number of rows to grab
+        :param na_values: Additional strings to recognize as NA/NaN
+        :param keep_default_na: Whether or not to include the default NaN values when parsing the data
+        :param na_filter: Detect missing value markers
+        :param verbose: Indicate number of NA values placed in non-numeric columns
+        :param parse_dates: The behavior is as follows:
+            bool. If True -> try parsing the index.
+            list of int or names. e.g. If [1, 2, 3] -> try parsing columns 1, 2, 3 each as a separate date column.
+            list of lists. e.g. If [[1, 3]] -> combine columns 1 and 3 and parse as a single date column.
+            dict, e.g. {‘foo’ : [1, 3]} -> parse columns 1, 3 as date and call result ‘foo’
+        :param date_parser: Function to use for converting a sequence of string columns to an array of datetime instances
+        :param thousands: Thousands separator for parsing string columns to numeric
+        :param comment: Comments out remainder of line
+        :param convert_float: Convert integral floats to int (i.e., 1.0 –> 1)
+        :param mangle_dupe_cols: Duplicate columns will be specified as ‘X’, ‘X.1’, …’X.N’, rather than ‘X’…’X’
+        :return: Dataframe
+        """
 
         obj = ExcelFile(file_path, engine)
         self.reader = self.__engines[obj.engine](file_path=file_path, flag_read_only=flag_read_only,
@@ -338,23 +388,53 @@ class FileParser(object):
                                                  true_values=true_values, false_values=false_values, skiprows=skiprows,
                                                  nrows=nrows, na_values=na_values, verbose=verbose,
                                                  parse_dates=parse_dates, date_parser=date_parser, thousands=thousands,
-                                                 comment=comment, skipfooter=skipfooter, convert_float=convert_float,
+                                                 comment=comment, skipfooter=0, convert_float=convert_float,
                                                  mangle_dupe_cols=mangle_dupe_cols, converters=converters,
                                                  keep_default_na=keep_default_na, na_filter=na_filter)
         self.reader.streams = self.__streams[obj.engine] + self.__streams['default']
         return self.reader.parse()
 
     def parse_xml(self, file_path, xmlns_rs, dict_var=None):
+        """
+        Parses XML file into dataframe or stream
+
+        :param file_path: File path to the file being read
+        :param xmlns_rs: xmlns_rs header needed to read xml file (At top of xml file)
+        :param dict_var: [Optional] (dict) Append data into dict variable
+        :return: dataframe
+        """
+
         self.reader = self.__engines['xmlread'](file_path=file_path, xmlns_rs=xmlns_rs, dict_var=dict_var)
         self.reader.streams = self.__streams['xmlread'] + self.__streams['default']
         return self.reader.parse()
 
     def write_xml(self, file_dir, file_name, df):
+        """
+        Writes XML data into file
+
+        :param file_dir: File directory where to XML file at
+        :param file_name: Filename of XML file
+        :param df: Dataframe to write into XML file
+        """
+
         self.reader = self.__engines['xmlwriter'](file_dir=file_dir, file_name=file_name, df=df)
         self.reader.write()
 
     def parse_open(self, file_path, mode='a', timeout=DEFAULT_TIMEOUT, check_interval=DEFAULT_CHECK_INTERVAL,
                    fail_when_locked=DEFAULT_FAIL_WHEN_LOCKED, flags=LOCK_METHOD, **file_open_kwargs):
+        """
+        Opens a Txt or etc... file and returns a file open object or streams into buffered data
+
+        :param file_path: File path to the file being read
+        :param mode: File mode (ie r, rb, w, a, etc...)
+        :param timeout: Timeout length
+        :param check_interval: Check interval
+        :param fail_when_locked: Type of failure when locked
+        :param flags: Flags
+        :param file_open_kwargs: Kwargs
+        :return: open object for reading
+        """
+
         self.reader = self.__engines['open'](file_path=file_path, mode=mode, timeout=timeout,
                                              check_interval=check_interval, fail_when_locked=fail_when_locked,
                                              flags=flags, **file_open_kwargs)
@@ -362,11 +442,27 @@ class FileParser(object):
         return self.reader.parse()
 
     def parse_csv(self, file_path, dialect=None, **fmtparams):
+        """
+        Parses CSV data into data
+
+        :param file_path: File path to the file being read
+        :param dialect: dialect for csv reading
+        :param fmtparams: Python format parameters
+        :return: data
+        """
+
         self.reader = self.__engines['csv'](file_path=file_path, dialect=dialect, **fmtparams)
         self.reader.streams = self.__streams['csv'] + self.__streams['default']
         return self.reader.parse()
 
     def parse_json(self, file_path):
+        """
+        Reads json into python objects or stream it in chunks
+
+        :param file_path: File path to the file being read
+        :return: python objects
+        """
+
         self.reader = self.__engines['json'](file_path=file_path)
         self.reader.streams = self.__streams['json'] + self.__streams['default']
         return self.reader.parse()
@@ -393,5 +489,11 @@ def is_an_xml(xml_file):
 
 
 def unique_id():
+    """
+    Creates a unique identifier
+
+    :return: Unique identifier
+    """
+
     return get_random_string(length=16,
                              allowed_chars=u'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789')
