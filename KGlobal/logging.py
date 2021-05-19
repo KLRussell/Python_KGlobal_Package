@@ -108,6 +108,7 @@ class LogHandle(object):
                     self.__write_to_log(**args)
             elif isinstance(args, list) and len(args) > 1:
                 command = args[0]
+                args.remove(args[0])
 
                 if command == 'gui_console':
                     self.__gui_console_set(*args)
