@@ -299,8 +299,6 @@ class SQLCursor(Thread):
                 raise ValueError("'buffer' %r value is zero or negative" % buffer)
             if csv_path and not os.path.exists(os.path.dirname(csv_path)):
                 raise ValueError("'csv_path' %r is not a valid directory path" % os.path.dirname(csv_path))
-            if csv_path and not csv_path.endswith('.csv'):
-                raise ValueError("'csv_path' %r is does not have a .csv extension" % os.path.basename(csv_path))
 
             if csv_path and csv_replace and os.path.exists(csv_path):
                 try:

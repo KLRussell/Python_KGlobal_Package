@@ -3,6 +3,7 @@ from __future__ import unicode_literals
 import os
 from .sql import SQLQueue
 from .logging import LogHandle
+from .filehandler import FileParser
 from exchangelib import Credentials as Exch_Cred, Configuration, DELEGATE
 from exchangelib.errors import UnauthorizedError, TransportError
 from traceback import format_exc
@@ -153,12 +154,13 @@ class TBoxBase(object):
                                             file_ext=main_file_name_prefix[1].replace('.', ''), encrypt=True)
 
 
-class Toolbox(TBoxBase, SQLQueue, LogHandle):
+class Toolbox(TBoxBase, SQLQueue, LogHandle, FileParser):
     DEFAULT_CONNECTION_SIZE = 10
 
     def __init__(self, script_path, logging_dir=None, logging_folder=None, logging_base_name=None, max_pool_size=None,
                  *args, **kwargs):
         LogHandle.__init__(self)
+        FileParser.__init__(self)
         TBoxBase.__init__(self, script_path=script_path)
         SQLQueue.__init__(self, max_pool_size=max_pool_size)
 
