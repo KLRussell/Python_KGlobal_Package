@@ -360,20 +360,23 @@ class SQLCursor(Thread):
             pass
 
     def __stream_dataset(self, dataset, handler, buffer, csv_path, delimiter, quotechar, quoting):
-        cols = [column[0] for column in dataset.description]
-        buffer_list = list()
-        row_num = 0
+        try:
+            cols = [column[0] for column in dataset.description]
+            buffer_list = list()
+            row_num = 0
 
-        for row in dataset:
-            buffer_list.append(tuple(row))
+            for row in dataset:
+                buffer_list.append(tuple(row))
 
-            if buffer <= len(buffer_list):
-                self.__handle_buffer(row_num, cols, buffer_list, handler, csv_path, delimiter, quotechar, quoting)
-                buffer_list.clear()
+                if buffer <= len(buffer_list):
+                    self.__handle_buffer(row_num, cols, buffer_list, handler, csv_path, delimiter, quotechar, quoting)
+                    buffer_list.clear()
 
-            row_num += 1
+                row_num += 1
 
-        self.__handle_buffer(row_num - 1, cols, buffer_list, handler, csv_path, delimiter, quotechar, quoting)
+            self.__handle_buffer(row_num - 1, cols, buffer_list, handler, csv_path, delimiter, quotechar, quoting)
+        except:
+            pass
 
     @staticmethod
     def __handle_buffer(row_num, cols, buffer_list, handler, csv_path, delimiter, quotechar, quoting):
