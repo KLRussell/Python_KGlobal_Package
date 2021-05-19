@@ -1,10 +1,11 @@
 from ..filehandler import FileHandler
 from portalocker import Lock
+from ..util import DEFAULT_TIMEOUT, DEFAULT_CHECK_INTERVAL, DEFAULT_FAIL_WHEN_LOCKED, LOCK_METHOD
 
 
 class OpenReader(FileHandler):
-    def __init__(self, file_path, mode='a', timeout=None, check_interval=None,
-                 fail_when_locked=None, flags=None, **file_open_kwargs):
+    def __init__(self, file_path, mode='a', timeout=DEFAULT_TIMEOUT, check_interval=DEFAULT_CHECK_INTERVAL,
+                 fail_when_locked=DEFAULT_FAIL_WHEN_LOCKED, flags=LOCK_METHOD, **file_open_kwargs):
         super().__init__(file_path=file_path, mode=mode, timeout=timeout, check_interval=check_interval,
                          fail_when_locked=fail_when_locked, flags=flags, **file_open_kwargs)
 

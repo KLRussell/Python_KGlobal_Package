@@ -6,6 +6,7 @@ from pandas.core.dtypes.common import is_list_like
 from pandas.io.parsers import TextParser
 from pandas.errors import EmptyDataError
 from typing import Mapping, Any
+from .util import DEFAULT_TIMEOUT, DEFAULT_CHECK_INTERVAL, DEFAULT_FAIL_WHEN_LOCKED, LOCK_METHOD
 
 
 class NotFunctionError(Exception):
@@ -89,8 +90,8 @@ class FileHandler(object):
                  names=None, index_col=None, usecols=None, squeeze=False, dtype=None, true_values=None,
                  false_values=None, skiprows=0, nrows=0, na_values=None, verbose=False, parse_dates=False,
                  date_parser=None, thousands=None, comment=None, skipfooter=0, convert_float=True, dialect=None,
-                 mangle_dupe_cols=True, xmlns_rs=None, dict_var=None, df=None, mode='a', timeout=None,
-                 check_interval=None, fail_when_locked=None, flags=None,
+                 mangle_dupe_cols=True, xmlns_rs=None, dict_var=None, df=None, mode='a', timeout=DEFAULT_TIMEOUT,
+                 check_interval=DEFAULT_CHECK_INTERVAL, fail_when_locked=DEFAULT_FAIL_WHEN_LOCKED, flags=LOCK_METHOD,
                  **kwargs):
         self.file_path = file_path
         self.file_dir = file_dir
@@ -419,8 +420,8 @@ class FileParser(object):
         self.reader = self.__engines['xmlwriter'](file_dir=file_dir, file_name=file_name, df=df)
         self.reader.write()
 
-    def parse_open(self, file_path, mode='a', timeout=None, check_interval=None,
-                   fail_when_locked=None, flags=None, **file_open_kwargs):
+    def parse_open(self, file_path, mode='a', timeout=DEFAULT_TIMEOUT, check_interval=DEFAULT_CHECK_INTERVAL,
+                   fail_when_locked=DEFAULT_FAIL_WHEN_LOCKED, flags=LOCK_METHOD, **file_open_kwargs):
         """
         Opens a Txt or etc... file and returns a file open object or streams into buffered data
 

@@ -1,8 +1,6 @@
 from ..filehandler import FileHandler
-from pandas.io.excel._util import maybe_convert_usecols
+from ..util import maybe_convert_usecols, get_version, Scalar
 from distutils.version import LooseVersion
-from pandas.compat._optional import get_version
-from pandas._typing import Scalar
 from pandas import to_datetime, Timestamp
 from typing import List
 from numpy import nan
