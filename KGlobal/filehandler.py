@@ -92,7 +92,7 @@ class FileHandler(object):
                  date_parser=None, thousands=None, comment=None, skipfooter=0, convert_float=True, dialect=None,
                  mangle_dupe_cols=True, xmlns_rs=None, dict_var=None, df=None, mode='a', timeout=DEFAULT_TIMEOUT,
                  check_interval=DEFAULT_CHECK_INTERVAL, fail_when_locked=DEFAULT_FAIL_WHEN_LOCKED, flags=LOCK_METHOD,
-                 **kwargs):
+                 truncate=False, **kwargs):
         self.file_path = file_path
         self.file_dir = file_dir
         self.file_name = file_name
@@ -126,6 +126,7 @@ class FileHandler(object):
         self.fail_when_locked = fail_when_locked
         self.flags = flags
         self.dialect = dialect
+        self.truncate = truncate
         self.kwargs = kwargs
 
     @property
@@ -344,7 +345,7 @@ class FileParser(object):
                     usecols=None, squeeze=False, converters=None, dtype=None, engine=None, true_values=None,
                     false_values=None, skiprows=0, nrows=0, na_values=None, keep_default_na=True, na_filter=True,
                     verbose=False, parse_dates=False, date_parser=None, thousands=None, comment=None,
-                    convert_float=True, mangle_dupe_cols=True):
+                    convert_float=True, mangle_dupe_cols=True, truncate=False):
 
         """
         Parses excel files into a dataframe or stream
@@ -378,6 +379,7 @@ class FileParser(object):
         :param comment: Comments out remainder of line
         :param convert_float: Convert integral floats to int (i.e., 1.0 –> 1)
         :param mangle_dupe_cols: Duplicate columns will be specified as ‘X’, ‘X.1’, …’X.N’, rather than ‘X’…’X’
+        :param truncate: Truncates excel file
         :return: Dataframe
         """
 
@@ -390,7 +392,8 @@ class FileParser(object):
                                                  parse_dates=parse_dates, date_parser=date_parser, thousands=thousands,
                                                  comment=comment, skipfooter=0, convert_float=convert_float,
                                                  mangle_dupe_cols=mangle_dupe_cols, converters=converters,
-                                                 keep_default_na=keep_default_na, na_filter=na_filter)
+                                                 keep_default_na=keep_default_na, na_filter=na_filter,
+                                                 truncate=truncate)
         self.reader.streams = self.__streams[obj.engine] + self.__streams['default']
         return self.reader.parse()
 
@@ -441,17 +444,18 @@ class FileParser(object):
         self.reader.streams = self.__streams['open'] + self.__streams['default']
         return self.reader.parse()
 
-    def parse_csv(self, file_path, dialect=None, **fmtparams):
+    def parse_csv(self, file_path, dialect=None, truncate=False, **fmtparams):
         """
         Parses CSV data into data
 
         :param file_path: File path to the file being read
         :param dialect: dialect for csv reading
+        :param truncate: Truncates excel file
         :param fmtparams: Python format parameters
         :return: data
         """
 
-        self.reader = self.__engines['csv'](file_path=file_path, dialect=dialect, **fmtparams)
+        self.reader = self.__engines['csv'](file_path=file_path, dialect=dialect, truncate=truncate, **fmtparams)
         self.reader.streams = self.__streams['csv'] + self.__streams['default']
         return self.reader.parse()
 

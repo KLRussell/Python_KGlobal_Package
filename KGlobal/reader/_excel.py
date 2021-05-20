@@ -4,19 +4,23 @@ from distutils.version import LooseVersion
 from pandas import to_datetime, Timestamp
 from typing import List
 from numpy import nan
+from traceback import format_exc
+from logging import getLogger
+
+log = getLogger(__name__)
 
 
 class OpenPYXLReader(FileHandler):
     def __init__(self, file_path, flag_read_only=False, sheet_names=None, header=0, names=None, index_col=None,
                  usecols=None, squeeze=False, dtype=None, true_values=None, false_values=None, skiprows=0, nrows=0,
                  na_values=None, verbose=False, parse_dates=False, date_parser=None, thousands=None, comment=None,
-                 skipfooter=0, convert_float=True, mangle_dupe_cols=True, **kwargs):
+                 skipfooter=0, convert_float=True, mangle_dupe_cols=True, truncate=False, **kwargs):
         super().__init__(file_path=file_path, flag_read_only=flag_read_only, sheet_names=sheet_names, header=header,
                          names=names, index_col=index_col, usecols=usecols, squeeze=squeeze, dtype=dtype,
                          true_values=true_values, false_values=false_values, skiprows=skiprows, nrows=nrows,
                          na_values=na_values, verbose=verbose, parse_dates=parse_dates, date_parser=date_parser,
                          thousands=thousands, comment=comment, skipfooter=skipfooter, convert_float=convert_float,
-                         mangle_dupe_cols=mangle_dupe_cols, **kwargs)
+                         mangle_dupe_cols=mangle_dupe_cols, truncate=truncate, **kwargs)
 
     def parse(self):
         if self.streams:
@@ -43,6 +47,16 @@ class OpenPYXLReader(FileHandler):
                         self.__openpyxl_sheet(sheet=xls_ws, handler=handler, buffer=buffer)
                     else:
                         sheets[tab] = self.__openpyxl_sheet(sheet=xls_ws, handler=handler, buffer=buffer)
+
+                    if self.truncate:
+                        try:
+                            if xls_ws.max_row > 1:
+                                xls_ws.delete_rows(2, xls_ws.max_row - 1)
+
+                            xls_file.save(filename=file)
+                        except Exception as e:
+                            log.error(format_exc)
+                            log.error('Excel Sheet truncate Failed - Ecode {0}, {1}'.format(type(e).__name__, str(e)))
         finally:
             xls_file.close()
 

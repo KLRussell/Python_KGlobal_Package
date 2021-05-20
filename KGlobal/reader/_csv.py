@@ -1,12 +1,12 @@
 from ..filehandler import FileHandler
-from csv import reader
+from csv import reader, writer
 from portalocker import Lock
 from pandas import DataFrame
 
 
 class CSVReader(FileHandler):
-    def __init__(self, file_path, dialect=None, **fmtparams):
-        super().__init__(file_path=file_path, dialect=dialect, **fmtparams)
+    def __init__(self, file_path, dialect=None, truncate=False, **fmtparams):
+        super().__init__(file_path=file_path, dialect=dialect, truncate=truncate, **fmtparams)
 
     def parse(self):
         if self.streams:
@@ -20,8 +20,9 @@ class CSVReader(FileHandler):
         row_num = 0
         header = None
 
-        with Lock(filename=self.file_path, mode='r') as read_obj:
+        with Lock(filename=self.file_path, mode='r') as read_obj, Lock(filename=self.file_path, mode='w') as write_obj:
             csv_reader = reader(read_obj, self.dialect, **self.kwargs)
+            csv_writer = writer(write_obj)
 
             for line in csv_reader:
                 data.append(line)
@@ -36,6 +37,11 @@ class CSVReader(FileHandler):
                     data.append(header)
 
                 row_num += 1
+
+            if self.truncate:
+                for i, row in enumerate(csv_reader):
+                    if i > 0:
+                        csv_writer.writerow(row)
 
         df = self.__to_df(data)
 
