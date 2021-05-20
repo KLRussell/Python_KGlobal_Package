@@ -192,8 +192,9 @@ class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
             if self.engine_type == 'pyodbc' and not isinstance(engine, Engine2):
                 raise ValueError("'engine' %r is not an Engine instance of PYODBC Connection" % engine)
 
-            log.debug('SQL connection (%s): Created engine %s', str(self.__sql_config), self.engine_id)
-            return self.__validate_engine(engine)
+            engine, spid = self.__validate_engine(engine)
+            log.debug('SQL Engine %s: Created connection (%s) on SPID %s', self.engine_id, str(self.__sql_config), spid)
+            return [engine, spid]
 
     def restore_to_pool(self, close_cursors=False):
         """
@@ -210,29 +211,25 @@ class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
 
             self.__engine_sql_class.queue_sql_engine_to_pool(self)
 
-    def stream_execute(self, buffer=1000, csv_path=None, csv_replace=False, delimiter=',', quotechar='"',
-                       quoting=QUOTE_ALL):
+    def stream_execute(self, buffer=1000):
         """
         Event Function
         Streams sql_execute by chunk for manual transformations and loading or transformations and storing into csv
 
         :param buffer: Number of lines per chunk to store in dataframe
-        :param csv_path: File path where data is stored at for csv file
-        :param csv_replace: (Optional) [True/False] Replace csv file if exists
-        :param delimiter: Data seperator to delimit columns
-        :param quotechar: Quote Character to wrap values with
-        :param quoting: csv quote mode
-        :var row_num: Variable outputted to event function of row number for buffered dataframe
         :var dataframe: Variable outputted to event function that is a buffered dataframe
+        :var row_start: Row number for first row of data
+        :var row_end: Row number for last row of data
         """
 
         def registerhandler(handler):
-            self.__sql_handlers.append([handler, buffer, csv_path, csv_replace, delimiter, quotechar, quoting])
+            self.__sql_handlers.append([handler, buffer])
             return handler
 
         return registerhandler
 
-    def sql_execute(self, query_str, execute=False, queue_cursor=False, new_engine=Flase):
+    def sql_execute(self, query_str, execute=False, queue_cursor=False, new_engine=False, csv_path=None,
+                    csv_replace=False, delimiter=',', quotechar='"', quoting=QUOTE_ALL):
         """
         Execute or Query SQL query statement. This command can be multi-threaded in a cursor queue
 
@@ -240,64 +237,79 @@ class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
         :param execute: [Optional] (True/False) Choose to execute or query results
         :param queue_cursor: [Optional] (True/False) Add to multi-thread queue
         :param new_engine: [Optional] (True/False) creates new engine for threading
+        :param csv_path: File path where data is stored at for csv file
+        :param csv_replace: (Optional) [True/False] Replace csv file if exists
+        :param delimiter: Data seperator to delimit columns
+        :param quotechar: Quote Character to wrap values with
+        :param quoting: csv quote mode
 
         :return: Returns Cursor class if queue_cursor is set to False
         """
 
+        if new_engine or queue_cursor:
+            engine, spid = self.connect()
+            keep_engine_alive = False
+        else:
+            engine, spid = self.engine_spid
+            keep_engine_alive = True
+
+        if new_engine:
+            self.__execute_sql(engine, spid, keep_engine_alive, query_str, execute, queue_cursor, csv_path,
+                               csv_replace, delimiter, quotechar, quoting)
+        else:
+            with self.__engine_lock:
+                self.__execute_sql(engine, spid, keep_engine_alive, query_str, execute, queue_cursor, csv_path,
+                                   csv_replace, delimiter, quotechar, quoting)
+
+
+    def __execute_sql(self, engine, spid, keep_engine_alive, query_str, execute=False, queue_cursor=False,
+                      csv_path=None, csv_replace=False, delimiter=',', quotechar='"', quoting=QUOTE_ALL):
         from ..sql.cursor import SQLCursor
 
-        with self.__engine_lock:
-            if queue_cursor:
-                engine, spid = self.connect()
-                params = dict(query_str=query_str, execute=execute, handlers=self.__sql_handlers)
-                cursor = SQLCursor(engine_type=self.engine_type, engine=engine, spid=spid, engine_class=self,
-                                   action="execute", action_params=params, keep_engine_alive=False)
+        if queue_cursor:
+            params = dict(query_str=query_str, execute=execute, handlers=self.__sql_handlers, csv_path=csv_path,
+                          csv_replace=csv_replace, delimiter=delimiter, quotechar=quotechar, quoting=quoting)
+            cursor = SQLCursor(engine_type=self.engine_type, engine=engine, spid=spid, engine_class=self,
+                               action="execute", action_params=params, keep_engine_alive=keep_engine_alive)
 
-                try:
-                    self.__cursors.put(cursor, block=False)
-                    cursor.start()
-                except:
-                    cursor.close()
-            elif self.__sql_handlers:
-                for handler, buffer, csv_path, csv_replace, delimiter, quotechar, quoting in self.__sql_handlers:
-                    if new_engine:
-                        engine, spid = self.connect()
-                    else:
-                        engine, spid = self.engine_spid
-
-                    cursor = SQLCursor(engine_type=self.engine_type, engine=engine, spid=spid)
-
-                    try:
-                        cursor.start()
-                        cursor.execute(query_str=query_str, execute=execute, handler=handler, buffer=buffer,
-                                       csv_path=csv_path, csv_replace=csv_replace, delimiter=delimiter,
-                                       quotechar=quotechar, quoting=quoting)
-                        cursor.join()
-                    except Exception as e:
-                        cursor.close()
-                        raise format_exc()
-                    else:
-                        return cursor
-            else:
-                if new_engine:
-                    engine, spid = self.connect()
-                else:
-                    engine, spid = self.engine_spid
-
-                cursor = SQLCursor(engine_type=self.engine_type, engine=engine, spid=spid)
+            try:
+                self.__cursors.put(cursor, block=False)
+                cursor.start()
+            except:
+                cursor.close()
+        elif self.__sql_handlers:
+            for handler, buffer in self.__sql_handlers:
+                cursor = SQLCursor(engine_type=self.engine_type, engine=engine, spid=spid,
+                                   keep_engine_alive=keep_engine_alive)
 
                 try:
                     cursor.start()
-                    cursor.execute(query_str=query_str, execute=execute)
+                    cursor.execute(query_str=query_str, execute=execute, handler=handler, buffer=buffer,
+                                   csv_path=csv_path, csv_replace=csv_replace, delimiter=delimiter,
+                                   quotechar=quotechar, quoting=quoting)
                     cursor.join()
-                except:
+                except Exception as e:
                     cursor.close()
                     raise format_exc()
                 else:
                     return cursor
+        else:
+            cursor = SQLCursor(engine_type=self.engine_type, engine=engine, spid=spid,
+                               keep_engine_alive=keep_engine_alive)
+
+            try:
+                cursor.start()
+                cursor.execute(query_str=query_str, execute=execute, csv_path=csv_path, csv_replace=csv_replace,
+                               delimiter=delimiter, quotechar=quotechar, quoting=quoting)
+                cursor.join()
+            except:
+                cursor.close()
+                raise format_exc()
+            else:
+                return cursor
 
     def sql_upload(self, dataframe, table_name, table_schema=None, if_exists='append', index=True, index_label='ID',
-                   queue_cursor=False, new_engine=Flase):
+                   queue_cursor=False, new_engine=False):
         """
         SQL Alchemy's command to upload a Dataframe to the SQL connection
 
@@ -312,41 +324,51 @@ class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
         :return: Returns Cursor class if queue_cursor is set to False
         """
 
+        if self.engine_type == 'alchemy':
+            if new_engine or queue_cursor:
+                engine, spid = self.connect()
+                keep_engine_alive = False
+            else:
+                engine, spid = self.engine_spid
+                keep_engine_alive = True
+
+            if new_engine:
+                self.__sql_uplaod(engine, spid, keep_engine_alive, dataframe, table_name, table_schema, if_exists,
+                                  index, index_label, queue_cursor)
+            else:
+                with self.__engine_lock:
+                    self.__sql_uplaod(engine, spid, keep_engine_alive, dataframe, table_name, table_schema, if_exists,
+                                      index, index_label, queue_cursor)
+
+    def __sql_upload(self, engine, spid, keep_engine_alive, dataframe, table_name, table_schema=None,
+                     if_exists='append', index=True, index_label='ID', queue_cursor=False):
         from ..sql.cursor import EngineCursor
 
-        if self.engine_type == 'alchemy':
-            with self.__engine_lock:
-                if new_engine:
-                    engine, spid = self.connect()
-                else:
-                    engine, spid = self.engine_spid
+        if queue_cursor:
+            params = dict(dataframe=dataframe, table_name=table_name, table_schema=table_schema,
+                          if_exists=if_exists, index=index, index_label=index_label)
+            cursor = EngineCursor(alch_engine=engine, spid=spid, engine_class=self, action='upload_df',
+                                  action_params=params, keep_engine_alive=False)
 
-                if queue_cursor:
-                    params = dict(dataframe=dataframe, table_name=table_name, table_schema=table_schema,
-                                  if_exists=if_exists, index=index, index_label=index_label)
-                    cursor = EngineCursor(alch_engine=engine, spid=spid, engine_class=self, action='upload_df',
-                                          action_params=params, keep_engine_alive=False)
+            try:
+                self.__cursors.put(cursor, block=False)
+                cursor.start()
+            except:
+                cursor.close()
+        else:
+            cursor = EngineCursor(alch_engine=engine, spid=spid, keep_engine_alive=keep_engine_alive)
 
-                    try:
-                        self.__cursors.put(cursor, block=False)
-                        cursor.start()
-                    except:
-                        cursor.close()
-                else:
-                    engine, spid = self.engine_spid
-                    cursor = EngineCursor(alch_engine=engine, spid=spid)
+            try:
+                cursor.start()
+                cursor.upload_df(dataframe, table_name, table_schema, if_exists, index, index_label)
+                cursor.join()
+            except:
+                cursor.close()
+                raise format_exc()
+            else:
+                return cursor
 
-                    try:
-                        cursor.start()
-                        cursor.upload_df(dataframe, table_name, table_schema, if_exists, index, index_label)
-                        cursor.join()
-                    except:
-                        cursor.close()
-                        raise format_exc()
-                    else:
-                        return cursor
-
-    def sql_tables(self, queue_cursor=False, new_engine=Flase):
+    def sql_tables(self, queue_cursor=False, new_engine=False):
         """
         Retreive full table list from the SQL connection
 
@@ -355,32 +377,49 @@ class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
         :return: Returns Cursor class if queue_cursor is set to False
         """
 
+        if new_engine or queue_cursor:
+            engine, spid = self.connect()
+            keep_engine_alive = False
+        else:
+            engine, spid = self.engine_spid
+            keep_engine_alive = True
+
+        if new_engine:
+            self.__sql_tables(engine, spid, keep_engine_alive, queue_cursor)
+        else:
+            with self.__engine_lock:
+                self.__sql_tables(engine, spid, keep_engine_alive, queue_cursor)
+
+    def __sql_tables(self, engine, spid, keep_engine_alive, queue_cursor=False):
         from ..sql.cursor import SQLCursor
 
-        with self.__engine_lock:
-            if new_engine:
+        try:
+            if queue_cursor:
                 engine, spid = self.connect()
+                cursor = SQLCursor(engine_type=self.engine_type, engine=engine, spid=spid, keep_engine_alive=False)
+                cursor.start()
+                cursor.engine_class = self
+                self.__cursors.put(cursor, block=False)
+                cursor.tables()
             else:
-                engine, spid = self.engine_spid
-
-            cursor = SQLCursor(engine_type=self.engine_type, engine=engine, spid=spid)
-
-            try:
-                if queue_cursor:
-                    cursor.start()
-                    cursor.engine_class = self
-                    self.__cursors.put(cursor, block=False)
-                    cursor.tables()
+                if new_engine:
+                    engine, spid = self.connect()
+                    keep_engine_alive = False
                 else:
-                    cursor.start()
-                    cursor.tables()
-                    cursor.join()
-            except:
-                cursor.close()
-                raise format_exc()
-            else:
-                if not queue_cursor and cursor:
-                    return cursor
+                    engine, spid = self.engine_spid
+                    keep_engine_alive = True
+
+                cursor = SQLCursor(engine_type=self.engine_type, engine=engine, spid=spid,
+                                   keep_engine_alive=keep_engine_alive)
+                cursor.start()
+                cursor.tables()
+                cursor.join()
+        except:
+            cursor.close()
+            raise format_exc()
+        else:
+            if not queue_cursor and cursor:
+                return cursor
 
     def wait_for_cursors(self, timeout=0):
         """

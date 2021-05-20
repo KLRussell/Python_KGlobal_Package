@@ -325,13 +325,13 @@ class SQLCursor(Thread):
                     if handler:
                         self.__stream_dataset(result, handler, buffer, csv_path, delimiter, quotechar, quoting)
                     else:
-                        self.__store_dataset(result)
+                        self.__store_dataset(result, csv_path, delimiter, quotechar, quoting)
 
                     while result.nextset():
                         if handler:
                             self.__stream_dataset(result, handler, buffer, csv_path, delimiter, quotechar, quoting)
                         else:
-                            self.__store_dataset(result)
+                            self.__store_dataset(result, csv_path, delimiter, quotechar, quoting)
 
                     if execute:
                         self.commit()
@@ -351,11 +351,21 @@ class SQLCursor(Thread):
         else:
             raise Exception("Cursor is closed. Cannot execute query")
 
-    def __store_dataset(self, dataset):
+    def __store_dataset(self, dataset, csv_path, delimiter, quotechar, quoting):
         try:
             data = [tuple(t) for t in dataset.fetchall()]
             cols = [column[0] for column in dataset.description]
-            self.__execute_results.append(DataFrame(data, columns=cols))
+            df = DataFrame(data, columns=cols)
+
+            if csv_path:
+                if os.path.exists(csv_path):
+                    df.to_csv(path_or_buf=csv_path, sep=delimiter, quotechar=quotechar, mode='a', index=False,
+                              quoting=quoting)
+                else:
+                    df.to_csv(path_or_buf=csv_path, sep=delimiter, quotechar=quotechar, mode='w', index=False,
+                              quoting=quoting)
+            else:
+                self.__execute_results.append(df)
         except:
             pass
 
