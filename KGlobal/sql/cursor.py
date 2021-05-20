@@ -318,7 +318,7 @@ class SQLCursor(Thread):
                     self.__cursor_action = ['execute', dict(query_str=query_str, execute=execute)]
 
                 with self.__is_pending:
-                    log.debug("Executing on SPID {0} query [{1}]".format(self.__spid, query_str))
+                    log.debug("Executing query on SPID %s" % self.__spid)
                     self.__execute_results = list()
                     result = self.__cursor.execute(query_str)
 
