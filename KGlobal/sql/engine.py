@@ -232,13 +232,14 @@ class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
 
         return registerhandler
 
-    def sql_execute(self, query_str, execute=False, queue_cursor=False):
+    def sql_execute(self, query_str, execute=False, queue_cursor=False, new_engine=Flase):
         """
         Execute or Query SQL query statement. This command can be multi-threaded in a cursor queue
 
         :param query_str: Query string that is executed to connection
         :param execute: [Optional] (True/False) Choose to execute or query results
         :param queue_cursor: [Optional] (True/False) Add to multi-thread queue
+        :param new_engine: [Optional] (True/False) creates new engine for threading
 
         :return: Returns Cursor class if queue_cursor is set to False
         """
@@ -259,7 +260,11 @@ class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
                     cursor.close()
             elif self.__sql_handlers:
                 for handler, buffer, csv_path, csv_replace, delimiter, quotechar, quoting in self.__sql_handlers:
-                    engine, spid = self.engine_spid
+                    if new_engine:
+                        engine, spid = self.connect()
+                    else:
+                        engine, spid = self.engine_spid
+
                     cursor = SQLCursor(engine_type=self.engine_type, engine=engine, spid=spid)
 
                     try:
@@ -274,7 +279,11 @@ class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
                     else:
                         return cursor
             else:
-                engine, spid = self.engine_spid
+                if new_engine:
+                    engine, spid = self.connect()
+                else:
+                    engine, spid = self.engine_spid
+
                 cursor = SQLCursor(engine_type=self.engine_type, engine=engine, spid=spid)
 
                 try:
@@ -288,7 +297,7 @@ class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
                     return cursor
 
     def sql_upload(self, dataframe, table_name, table_schema=None, if_exists='append', index=True, index_label='ID',
-                   queue_cursor=False):
+                   queue_cursor=False, new_engine=Flase):
         """
         SQL Alchemy's command to upload a Dataframe to the SQL connection
 
@@ -299,6 +308,7 @@ class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
         :param index: [Optional] (True/False) Should generated indexes from dataframe be uploaded?
         :param index_label: [Optional] What is the index column name (Use when Index is True)
         :param queue_cursor: [Optional] (True/False) Add to multi-thread queue
+        :param new_engine: [Optional] (True/False) creates new engine for threading
         :return: Returns Cursor class if queue_cursor is set to False
         """
 
@@ -306,7 +316,10 @@ class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
 
         if self.engine_type == 'alchemy':
             with self.__engine_lock:
-                engine, spid = self.connect()
+                if new_engine:
+                    engine, spid = self.connect()
+                else:
+                    engine, spid = self.engine_spid
 
                 if queue_cursor:
                     params = dict(dataframe=dataframe, table_name=table_name, table_schema=table_schema,
@@ -333,18 +346,23 @@ class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
                     else:
                         return cursor
 
-    def sql_tables(self, queue_cursor=False):
+    def sql_tables(self, queue_cursor=False, new_engine=Flase):
         """
         Retreive full table list from the SQL connection
 
         :param queue_cursor: (True/False) Add to multi-thread queue
+        :param new_engine: [Optional] (True/False) creates new engine for threading
         :return: Returns Cursor class if queue_cursor is set to False
         """
 
         from ..sql.cursor import SQLCursor
 
         with self.__engine_lock:
-            engine, spid = self.engine_spid
+            if new_engine:
+                engine, spid = self.connect()
+            else:
+                engine, spid = self.engine_spid
+
             cursor = SQLCursor(engine_type=self.engine_type, engine=engine, spid=spid)
 
             try:

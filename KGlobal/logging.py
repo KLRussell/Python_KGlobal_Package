@@ -19,6 +19,7 @@ class LogHandle(object):
     __write_pipe = None
     __read_pipe = None
     __pipe_thread = None
+    __print_lock = Lock()
 
     """
     Logging that becomes easier and more uniformed
@@ -144,36 +145,37 @@ class LogHandle(object):
         :param print_only: (True/False) print line only and not log into file
         """
 
-        if not print_only and self.__base_name and self.__file_dir:
-            if not message:
-                raise Exception("'message' is missing")
+        with self.__print_lock:
+            if not print_only and self.__base_name and self.__file_dir:
+                if not message:
+                    raise Exception("'message' is missing")
 
-            self.__clean_handlers()
-            filepath = os.path.join(self.__file_dir,
-                                    "{0}_{1}_Log.txt".format(datetime.now().__format__("%Y%m%d"), self.__base_name))
+                self.__clean_handlers()
+                filepath = os.path.join(self.__file_dir,
+                                        "{0}_{1}_Log.txt".format(datetime.now().__format__("%Y%m%d"), self.__base_name))
 
-            logging.basicConfig(filename=filepath,
-                                level=logging.DEBUG, format=' %(asctime)s - %(levelname)s - %(message)s')
+                logging.basicConfig(filename=filepath,
+                                    level=logging.DEBUG, format=' %(asctime)s - %(levelname)s - %(message)s')
 
-        message = ''.join(filter(lambda x: x in self.__printable, message))
+            message = ''.join(filter(lambda x: x in self.__printable, message))
 
-        if self.__gui_console:
-            self.__gui_console.print_gui('{0} - {1} - {2}'.format(datetime.now().__format__("%Y%m%d %I:%M:%S %p"),
-                                                                  action.upper(), message))
-        else:
-            print('{0} - {1} - {2}'.format(datetime.now(), action.upper(), message))
+            if self.__gui_console:
+                self.__gui_console.print_gui('{0} - {1} - {2}'.format(datetime.now().__format__("%Y%m%d %I:%M:%S %p"),
+                                                                      action.upper(), message))
+            else:
+                print('{0} - {1} - {2}'.format(datetime.now(), action.upper(), message))
 
-        if not print_only and self.__base_name and self.__file_dir:
-            if action.lower() == 'debug':
-                logging.debug(message)
-            elif action.lower() == 'info':
-                logging.info(message)
-            elif action.lower() == 'warning':
-                logging.warning(message)
-            elif action.lower() == 'error':
-                logging.error(message)
-            elif action.lower() == 'critical':
-                logging.critical(message)
+            if not print_only and self.__base_name and self.__file_dir:
+                if action.lower() == 'debug':
+                    logging.debug(message)
+                elif action.lower() == 'info':
+                    logging.info(message)
+                elif action.lower() == 'warning':
+                    logging.warning(message)
+                elif action.lower() == 'error':
+                    logging.error(message)
+                elif action.lower() == 'critical':
+                    logging.critical(message)
 
     def __del__(self):
         logging.shutdown()
