@@ -8,6 +8,23 @@ class CSVReader(FileHandler):
     def __init__(self, file_path, dialect=None, truncate=False, **fmtparams):
         super().__init__(file_path=file_path, dialect=dialect, truncate=truncate, **fmtparams)
 
+    def max_rows(self, file_path=None):
+        row_num = -1
+
+        if file_path:
+            self.file_path = file_path
+
+        if self.file_path:
+            with Lock(filename=self.file_path, mode='r') as read_obj:
+                csv_reader = reader(read_obj)
+
+                for line in csv_reader:
+                    row_num += 1
+        else:
+            row_num = 0
+
+        return row_num
+
     def parse(self):
         if self.streams:
             for handler, buffer in self.streams:
@@ -32,7 +49,7 @@ class CSVReader(FileHandler):
 
                 if handler and buffer <= len(data):
                     df = self.__to_df(data)
-                    handler(df, row_num - len(df) + 1, row_num)
+                    handler(self.file_path, df, row_num - len(df) + 1, row_num)
                     data.clear()
                     data.append(header)
 
@@ -47,7 +64,7 @@ class CSVReader(FileHandler):
 
         if not df.empty and handler:
             row_num -= 1
-            handler(df, row_num - len(df) + 1, row_num)
+            handler(self.file_path, df, row_num - len(df) + 1, row_num)
         elif not handler:
             return df
 

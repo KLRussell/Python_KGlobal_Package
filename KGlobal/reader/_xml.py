@@ -47,7 +47,7 @@ class XMLReader(FileHandler):
                 header = converted_row
 
             if handler and buffer <= len(xml_dicts):
-                handler(self.__parse_df(xml_dicts), row_num - len(xml_dicts) + 1)
+                handler(self.file_path, self.__parse_df(xml_dicts), row_num - len(xml_dicts) + 1)
                 xml_dicts.clear()
                 xml_dicts.append(header)
 
@@ -55,7 +55,7 @@ class XMLReader(FileHandler):
 
         if handler:
             row_num -= 1
-            handler(self.__parse_df(xml_dicts), row_num - len(xml_dicts) + 1)
+            handler(self.file_path, self.__parse_df(xml_dicts), row_num - len(xml_dicts) + 1)
         else:
             return self.__parse_df(xml_dicts)
 

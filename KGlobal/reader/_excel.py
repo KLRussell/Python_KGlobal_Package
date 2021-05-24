@@ -29,6 +29,31 @@ class OpenPYXLReader(FileHandler):
         else:
             return self.__parse()
 
+    def max_rows(self, file_path=None, sheet_names=None):
+        sheets = dict()
+
+        if file_path:
+            self.file_path = file_path
+
+        if sheet_names:
+            self.sheet_names = sheet_names
+
+        if self.file_path:
+            from openpyxl import load_workbook
+
+            xls_file = load_workbook(self.file_path)
+
+            try:
+                for tab in xls_file.sheetnames:
+                    if not self.sheet_names or tab.lower() in self.sheet_names:
+                        xls_ws = xls_file[tab]
+                        sheets[tab] = xls_ws.max_row
+
+            finally:
+                xls_file.close()
+
+        return sheets
+
     def __parse(self, handler=None, buffer=None):
         from openpyxl import load_workbook
 
@@ -57,7 +82,11 @@ class OpenPYXLReader(FileHandler):
                         except Exception as e:
                             log.error(format_exc)
                             log.error('Excel Sheet truncate Failed - Ecode {0}, {1}'.format(type(e).__name__, str(e)))
+                            pass
         finally:
+            if hasattr(xls_file, '_archive') and hasattr(xls_file._archive, 'close'):
+                xls_file._archive.close()
+
             xls_file.close()
 
         if sheets:
@@ -92,7 +121,7 @@ class OpenPYXLReader(FileHandler):
                 if handler and buffer < len(data):
                     data = self.__read_only_fix(data, version, is_readonly)
                     df = self.convert_data(data)
-                    handler(df, row_number - len(df) + 1, row_number)
+                    handler(self.file_path, df, row_number - len(df) + 1, row_number)
                     data.clear()
                     data.append(header)
                     last_row_with_data = -1
@@ -105,7 +134,7 @@ class OpenPYXLReader(FileHandler):
 
         if not df.empty and handler:
             row_number -= 1
-            handler(df, row_number - len(df) + 1, row_number)
+            handler(self.file_path, df, row_number - len(df) + 1, row_number)
         elif handler is None:
             return df
 
@@ -251,7 +280,7 @@ class ODFReader(FileHandler):
                 if handler and buffer < len(table):
                     table = self.__fix_table(table)
                     df = self.convert_data(table)
-                    handler(df, row_number - len(df) + 1, row_number)
+                    handler(self.file_path, df, row_number - len(df) + 1, row_number)
                     table.clear()
                     table.append(header)
 
@@ -262,7 +291,7 @@ class ODFReader(FileHandler):
 
         if not df.empty and handler:
             row_number -= 1
-            handler(df, row_number - len(df) + 1, row_number)
+            handler(self.file_path, df, row_number - len(df) + 1, row_number)
         elif not handler:
             return df
 
@@ -427,7 +456,7 @@ class XLRDReader(FileHandler):
 
         if not df.empty and handler:
             row_number -= 1
-            handler(df, row_number - len(df) + 1, row_number)
+            handler(self.file_path, df, row_number - len(df) + 1, row_number)
         elif not handler:
             return df
 
@@ -527,7 +556,7 @@ class PYXLSBReader(FileHandler):
 
                 if handler and buffer < len(data):
                     df = self.convert_data(data)
-                    handler(df, row_number - len(df) + 1, row_number)
+                    handler(self.file_path, df, row_number - len(df) + 1, row_number)
                     data.clear()
                     data.append(header)
 
@@ -537,7 +566,7 @@ class PYXLSBReader(FileHandler):
 
         if not df.empty and handler:
             row_number -= 1
-            handler(df, row_number - len(df) + 1, row_number)
+            handler(self.file_path, df, row_number - len(df) + 1, row_number)
         elif not handler:
             return df
 

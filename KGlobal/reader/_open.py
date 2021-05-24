@@ -32,7 +32,7 @@ class OpenReader(FileHandler):
                     header = converted_row
 
                 if buffer <= len(data):
-                    handler(data, row_num - len(data) + 1, row_num)
+                    handler(self.file_path, data, row_num - len(data) + 1, row_num)
                     data.clear()
                     data.append(header)
 
@@ -40,6 +40,6 @@ class OpenReader(FileHandler):
 
         if data:
             row_num -= 1
-            handler(data, row_num - len(data) + 1, row_num)
+            handler(self.file_path, data, row_num - len(data) + 1, row_num)
         else:
             return data

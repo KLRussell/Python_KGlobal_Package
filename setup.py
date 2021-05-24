@@ -4,7 +4,7 @@ from setuptools import setup
 if __name__ == '__main__':
     setup(
         name='KGlobal',
-        version='1.6.4.2',
+        version='1.6.4.8',
         author='Kevin Russell',
         packages=['KGlobal', 'KGlobal.data', 'KGlobal.sql', 'KGlobal.reader'],
         # py_modules=['KGlobal'],

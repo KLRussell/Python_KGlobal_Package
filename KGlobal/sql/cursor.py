@@ -217,6 +217,7 @@ class SQLCursor(Thread):
                 pass
 
         if not self.__keep_engine_alive:
+            log.debug('Closed connection on SPID %s', spid)
             close_engine(self.__engine)
 
         if self.__engine_class:
@@ -528,8 +529,6 @@ class EngineCursor(Thread):
 
         with self.__is_closing:
             if self.__engine:
-                from .engine import close_engine
-
                 try:
                     if hasattr(self.__engine, 'cancel'):
                         self.__engine.cancel()
@@ -540,10 +539,7 @@ class EngineCursor(Thread):
                     log.error(e.code, e.__dict__['orig'])
                     pass
 
-                if not self.__keep_engine_alive:
-                    close_engine(self.__engine)
-
-            self.__engine = None
+                self.__close()
 
     def upload_df(self, dataframe, table_name, table_schema=None, if_exists='append', index=True, index_label='ID'):
         """
@@ -571,8 +567,7 @@ class EngineCursor(Thread):
                 self.__cursor_action = ['upload_df', params]
 
             with self.__is_pending:
-                log.debug("SQL Upload on SPID {0} to [{1}]".format(self.__spid, '{0}.{1}'.join(table_schema,
-                                                                                               table_name)))
+                log.debug("SQL Upload on SPID {0} to [{1}.{2}]".format(self.__spid, table_schema, table_name))
 
                 try:
                     dataframe.to_sql(
@@ -596,10 +591,16 @@ class EngineCursor(Thread):
             raise ValueError('Engine is closed. Unable to upload dataframe')
 
     def __close(self):
+        from .engine import close_engine
+
         if self.__engine_class:
             if self.__errors:
                 self.__engine_class.add_cursor_result(self)
 
             self.__engine_class.rem_cursor(self)
-        else:
-            self.__engine = None
+
+        if not self.__keep_engine_alive:
+            log.debug('Closed connection on SPID %s', spid)
+            close_engine(self.__engine)
+
+        self.__engine = None

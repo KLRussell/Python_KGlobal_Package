@@ -32,6 +32,9 @@ class Streams(object):
 
         self.streams[engine].append([handler, buffer])
 
+    def clear_streams(self):
+        self.streams = dict()
+
     def keys(self):
         return list(self.streams.keys())
 
@@ -341,6 +344,9 @@ class FileParser(object):
 
         return registerhandler
 
+    def clear_streams(self):
+        self.__streams.clear_streams()
+
     def parse_excel(self, file_path, flag_read_only=False, sheet_names=None, header=0, names=None, index_col=None,
                     usecols=None, squeeze=False, converters=None, dtype=None, engine=None, true_values=None,
                     false_values=None, skiprows=0, nrows=0, na_values=None, keep_default_na=True, na_filter=True,
@@ -470,6 +476,12 @@ class FileParser(object):
         self.reader = self.__engines['json'](file_path=file_path)
         self.reader.streams = self.__streams['json'] + self.__streams['default']
         return self.reader.parse()
+
+    def __del__(self):
+        self.clear_streams()
+        self.__streams = None
+        self.__reader = None
+        self.__engines = None
 
 
 def is_an_xml(xml_file):

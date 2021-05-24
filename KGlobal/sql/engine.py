@@ -261,7 +261,6 @@ class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
                 self.__execute_sql(engine, spid, keep_engine_alive, query_str, execute, queue_cursor, csv_path,
                                    csv_replace, delimiter, quotechar, quoting)
 
-
     def __execute_sql(self, engine, spid, keep_engine_alive, query_str, execute=False, queue_cursor=False,
                       csv_path=None, csv_replace=False, delimiter=',', quotechar='"', quoting=QUOTE_ALL):
         from ..sql.cursor import SQLCursor
@@ -290,7 +289,7 @@ class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
                     cursor.join()
                 except Exception as e:
                     cursor.close()
-                    raise format_exc()
+                    log.debug(format_exc())
                 else:
                     return cursor
         else:
@@ -304,7 +303,7 @@ class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
                 cursor.join()
             except:
                 cursor.close()
-                raise format_exc()
+                log.debug(format_exc())
             else:
                 return cursor
 
@@ -333,11 +332,11 @@ class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
                 keep_engine_alive = True
 
             if new_engine:
-                self.__sql_uplaod(engine, spid, keep_engine_alive, dataframe, table_name, table_schema, if_exists,
+                self.__sql_upload(engine, spid, keep_engine_alive, dataframe, table_name, table_schema, if_exists,
                                   index, index_label, queue_cursor)
             else:
                 with self.__engine_lock:
-                    self.__sql_uplaod(engine, spid, keep_engine_alive, dataframe, table_name, table_schema, if_exists,
+                    self.__sql_upload(engine, spid, keep_engine_alive, dataframe, table_name, table_schema, if_exists,
                                       index, index_label, queue_cursor)
 
     def __sql_upload(self, engine, spid, keep_engine_alive, dataframe, table_name, table_schema=None,
@@ -348,7 +347,7 @@ class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
             params = dict(dataframe=dataframe, table_name=table_name, table_schema=table_schema,
                           if_exists=if_exists, index=index, index_label=index_label)
             cursor = EngineCursor(alch_engine=engine, spid=spid, engine_class=self, action='upload_df',
-                                  action_params=params, keep_engine_alive=False)
+                                  action_params=params, keep_engine_alive=keep_engine_alive)
 
             try:
                 self.__cursors.put(cursor, block=False)
@@ -364,7 +363,7 @@ class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
                 cursor.join()
             except:
                 cursor.close()
-                raise format_exc()
+                log.debug(format_exc())
             else:
                 return cursor
 
@@ -393,30 +392,21 @@ class SQLEngineClass(BaseSQLEngineClass, PickleMixIn):
     def __sql_tables(self, engine, spid, keep_engine_alive, queue_cursor=False):
         from ..sql.cursor import SQLCursor
 
+        cursor = SQLCursor(engine_type=self.engine_type, engine=engine, spid=spid, keep_engine_alive=keep_engine_alive)
+
         try:
             if queue_cursor:
-                engine, spid = self.connect()
-                cursor = SQLCursor(engine_type=self.engine_type, engine=engine, spid=spid, keep_engine_alive=False)
                 cursor.start()
                 cursor.engine_class = self
                 self.__cursors.put(cursor, block=False)
                 cursor.tables()
             else:
-                if new_engine:
-                    engine, spid = self.connect()
-                    keep_engine_alive = False
-                else:
-                    engine, spid = self.engine_spid
-                    keep_engine_alive = True
-
-                cursor = SQLCursor(engine_type=self.engine_type, engine=engine, spid=spid,
-                                   keep_engine_alive=keep_engine_alive)
                 cursor.start()
                 cursor.tables()
                 cursor.join()
         except:
             cursor.close()
-            raise format_exc()
+            log.debug(format_exc())
         else:
             if not queue_cursor and cursor:
                 return cursor

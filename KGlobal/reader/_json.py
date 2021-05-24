@@ -28,7 +28,7 @@ class JSONReader(FileHandler):
                     header = converted_row
 
                 if handler and buffer <= len(data):
-                    handler(data, row_num - len(data) + 1, row_num)
+                    handler(self.file_path, data, row_num - len(data) + 1, row_num)
                     data.clear()
                     data.append(header)
 
@@ -36,7 +36,7 @@ class JSONReader(FileHandler):
 
         if data and handler:
             row_num -= 1
-            handler(data, row_num - len(data) + 1, row_num)
+            handler(self.file_path, data, row_num - len(data) + 1, row_num)
         elif not handler:
             return data
 
